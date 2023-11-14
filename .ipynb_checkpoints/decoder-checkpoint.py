@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 
 class DecodeNext(nn.Module):
-
     def __init__(self, params):
         super().__init__()
         
@@ -19,12 +18,12 @@ class DecodeNext(nn.Module):
                 in_features=self.params.GRU_HIDDEN_DIM, 
                 out_features=self.params.GRU_HIDDEN_DIM
             ), 
-            nn.ReLU(), 
+            nn.Tanh(), 
             nn.Linear(
                 in_features=self.params.GRU_HIDDEN_DIM, 
                 out_features=self.params.ALPHABET_LEN
             ), 
-            nn.ReLU()
+            nn.Tanh()
         )
 
     def forward(self, inp, hidden):
@@ -41,9 +40,24 @@ class Decoder(nn.Module):
         
         self.params = params
         
+        self.dense_decoder = nn.Sequential(
+            nn.Linear(
+                in_features=self.params.LATENT_DIM, 
+                out_features=self.params.GRU_HIDDEN_DIM
+            ),
+            nn.Tanh(), 
+            nn.Linear(
+                in_features=self.params.GRU_HIDDEN_DIM, 
+                out_features=self.params.GRU_HIDDEN_DIM
+            ), 
+            nn.Tanh()
+        )
+        
         self.decode_next = DecodeNext(params)
     
     def forward(self, hidden, target=None):
+        
+        hidden = self.dense_decoder(hidden)
         
         *_, batch_size, _ = hidden.shape
         

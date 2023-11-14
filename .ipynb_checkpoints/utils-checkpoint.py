@@ -67,10 +67,10 @@ def from_one_hot(one_hot_smiles, params):
 
 Params = namedtuple(
     'Params', 
-    ['N', 'SMILE_LEN', 'alphabet', 'ALPHABET_LEN', 'stoi', 'itos', 'GRU_HIDDEN_DIM']
+    ['N', 'SMILE_LEN', 'alphabet', 'ALPHABET_LEN', 'stoi', 'itos', 'GRU_HIDDEN_DIM', 'LATENT_DIM']
 )
 
-def make_params(smiles=None, GRU_HIDDEN_DIM=128, from_file=None, to_file=None):
+def make_params(smiles=None, GRU_HIDDEN_DIM=128, LATENT_DIM=128, from_file=None, to_file=None):
     if smiles is None and not from_file:
         raise ValueError(
             'make_params: cannot create parameters, need smiles or from_file'
@@ -92,7 +92,8 @@ def make_params(smiles=None, GRU_HIDDEN_DIM=128, from_file=None, to_file=None):
         ALPHABET_LEN = len(alphabet), 
         stoi = {c: int(i) for i, c in enumerate(alphabet)},
         itos = alphabet, 
-        GRU_HIDDEN_DIM = 128, 
+        GRU_HIDDEN_DIM = GRU_HIDDEN_DIM, 
+        LATENT_DIM = LATENT_DIM
     )
     
     if to_file:
