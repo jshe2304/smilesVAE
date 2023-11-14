@@ -1,2 +1,4 @@
 data/zinc/
 __pycache__/
+venv/
+env/
