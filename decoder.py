@@ -19,18 +19,33 @@ class DecodeNext(nn.Module):
                 out_features=self.params.GRU_HIDDEN_DIM
             ), 
             nn.Tanh(), 
+            
+            nn.Dropout(p=0.1), 
+            nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
+            
             nn.Linear(
                 in_features=self.params.GRU_HIDDEN_DIM, 
                 out_features=self.params.ALPHABET_LEN
             ), 
-            nn.Tanh()
+            nn.Tanh(), 
+            
+            nn.Dropout(p=0.1), 
+            nn.BatchNorm1d(num_features=self.params.ALPHABET_LEN), 
+            
+            nn.Linear(
+                in_features=self.params.ALPHABET_LEN, 
+                out_features=self.params.ALPHABET_LEN
+            )
         )
 
     def forward(self, inp, hidden):
-        
+        # inp shape: (N, L, H_in) (10, 1, 21)
+        # hidden shape: (D * num_layers, N, H_out) (1, 10, 256)
         out, hidden = self.gru(inp, hidden)
+        # out shape: (N, L, D * H_out)
+        # hidden shape: (D * num_layers, N, H_hout) (1, 10, 256)
 
-        out = self.dense_decoder(out)
+        out = self.dense_decoder(out.squeeze())
 
         return out, hidden
 
@@ -46,18 +61,31 @@ class Decoder(nn.Module):
                 out_features=self.params.GRU_HIDDEN_DIM
             ),
             nn.Tanh(), 
+            
+            nn.Dropout(p=0.1), 
+            nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
+            
             nn.Linear(
                 in_features=self.params.GRU_HIDDEN_DIM, 
                 out_features=self.params.GRU_HIDDEN_DIM
             ), 
-            nn.Tanh()
+            nn.Tanh(), 
+            
+            nn.Dropout(p=0.1), 
+            nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
+            
+            nn.Linear(
+                in_features=self.params.GRU_HIDDEN_DIM, 
+                out_features=self.params.GRU_HIDDEN_DIM
+            ), 
         )
         
         self.decode_next = DecodeNext(params)
     
-    def forward(self, hidden, target=None):
-        
-        hidden = self.dense_decoder(hidden)
+    def forward(self, latent, target=None):
+        # latent.shape = (N, LATENT_DIM)
+        hidden = self.dense_decoder(latent).unsqueeze(0)
+        #hidden.shape = (1, N, GRU_HIDDEN_DIM)
         
         *_, batch_size, _ = hidden.shape
         
@@ -72,7 +100,7 @@ class Decoder(nn.Module):
         )
         inp[:, :, self.params.stoi['<BOS>']] = 1
         y[:, 0, :] = inp.squeeze()
-        
+
         for i in range(1, self.params.SMILE_LEN):
 
             prediction, hidden = self.decode_next(inp, hidden)

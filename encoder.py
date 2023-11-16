@@ -19,16 +19,28 @@ class Encoder(nn.Module):
                 out_features=self.params.GRU_HIDDEN_DIM
             ), 
             nn.Tanh(), 
+            
+            nn.Dropout(p=0.1), 
+            nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
+            
             nn.Linear(
                 in_features=self.params.GRU_HIDDEN_DIM, 
                 out_features=self.params.LATENT_DIM
             ), 
-            nn.Tanh()
+            nn.Tanh(), 
+            
+            nn.Dropout(p=0.1), 
+            nn.BatchNorm1d(num_features=self.params.LATENT_DIM), 
+            
+            nn.Linear(
+                in_features=self.params.LATENT_DIM, 
+                out_features=self.params.LATENT_DIM, 
+            )
         )
 
     def forward(self, x):
         _, hidden = self.gru(x)
         
-        hidden = self.dense_encoder(hidden)
+        hidden = self.dense_encoder(hidden.squeeze(0))
         
         return hidden

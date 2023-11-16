@@ -4,6 +4,7 @@ import torch
 import os
 import json
 from collections import namedtuple
+import random
 
 def fetch_smiles_zinc(zinc_dir: str):
     smiles = []
@@ -101,3 +102,40 @@ def make_params(smiles=None, GRU_HIDDEN_DIM=128, LATENT_DIM=128, from_file=None,
             f.write(json.dumps(params._asdict()))
     
     return params
+
+def mean_similarity(x, y):
+    x_argmax = torch.argmax(x, dim=2)
+    y_argmax = torch.argmax(y, dim=2)
+    
+    return float(torch.mean(
+        torch.mean(
+            (x_argmax == y_argmax), 
+            dim=1, 
+            dtype=torch.float32
+        )
+    ))
+
+def stos(encoder, decoder, smile, params):
+    x = to_one_hot([smile], params)
+    
+    latent = encoder(x)
+    
+    y = decoder(latent)
+    
+    return str(from_one_hot(torch.softmax(y, dim=2), params))
+
+def evaluate_ae(encoder, decoder, smiles, eval_n, params):
+    x = to_one_hot(random.sample(smiles, eval_n), params)
+    
+    latents = encoder(x)
+    
+    print(latents.shape)
+
+    y = decoder(latents)
+
+    print(f"mean token matching: {mean_similarity(x, y)}\n")
+    
+    for smile in random.sample(smiles, 10):
+        print(smile)
+        print(stos(encoder, decoder, smile, params))
+        print()
