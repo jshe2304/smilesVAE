@@ -128,14 +128,20 @@ def evaluate_ae(encoder, decoder, smiles, eval_n, params):
     x = to_one_hot(random.sample(smiles, eval_n), params)
     
     latents = encoder(x)
-    
-    print(latents.shape)
 
     y = decoder(latents)
 
     print(f"mean token matching: {mean_similarity(x, y)}\n")
     
-    for smile in random.sample(smiles, 10):
-        print(smile)
-        print(stos(encoder, decoder, smile, params))
-        print()
+    sample_smiles = random.sample(smiles, 10)
+
+    one_hots = to_one_hot(sample_smiles, params)
+
+    latents = encoder(one_hots)
+
+    y = decoder(latents)
+    
+    out_smiles = from_one_hot(torch.softmax(y, dim=2), params)
+    
+    print(sample_smiles)
+    print(out_smiles)

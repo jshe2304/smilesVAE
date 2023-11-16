@@ -39,15 +39,21 @@ class DecodeNext(nn.Module):
         )
 
     def forward(self, inp, hidden):
-        # inp shape: (N, L, H_in) (10, 1, 21)
-        # hidden shape: (D * num_layers, N, H_out) (1, 10, 256)
+        # inp.shape:    (N, L, H_in)
+        # hidden.shape: (D * num_layers, N, H_out)
+        
         out, hidden = self.gru(inp, hidden)
-        # out shape: (N, L, D * H_out)
-        # hidden shape: (D * num_layers, N, H_hout) (1, 10, 256)
+        
+        # out.shape:    (N, L, D * H_out)
+        # hidden.shape: (D * num_layers, N, H_out)
+        
+        # out.shape:    (N, L, D * H_out) -> (N, D * H_out)
+        
+        prediction = self.dense_decoder(out.squeeze())
+        
+        # prediction.shape: (N, ALPHABET_LEN)
 
-        out = self.dense_decoder(out.squeeze())
-
-        return out, hidden
+        return prediction, hidden
 
 class Decoder(nn.Module):
     def __init__(self, params):
@@ -85,7 +91,7 @@ class Decoder(nn.Module):
     def forward(self, latent, target=None):
         # latent.shape = (N, LATENT_DIM)
         hidden = self.dense_decoder(latent).unsqueeze(0)
-        #hidden.shape = (1, N, GRU_HIDDEN_DIM)
+        # hidden.shape = (1, N, GRU_HIDDEN_DIM)
         
         *_, batch_size, _ = hidden.shape
         
@@ -102,14 +108,16 @@ class Decoder(nn.Module):
         y[:, 0, :] = inp.squeeze()
 
         for i in range(1, self.params.SMILE_LEN):
-
+            
+            # inp.shape = (N, 1, ALPHABET_LEN)
             prediction, hidden = self.decode_next(inp, hidden)
+            # prediction.shape = ()
 
-            y[:, i, :] = prediction.squeeze()
+            y[:, i, :] = prediction
 
             if target != None:
                 inp = target[:, i:i+1, :]
             else:
-                inp = prediction
+                inp = prediction.unsqueeze(1)
 
         return y
