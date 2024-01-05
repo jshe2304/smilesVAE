@@ -127,9 +127,9 @@ def stos(encoder, decoder, smile, params):
 def evaluate_ae(encoder, decoder, smiles, eval_n, params):
     x = to_one_hot(random.sample(smiles, eval_n), params)
     
-    latents = encoder(x)
+    _, _, z = encoder(x)
 
-    y = decoder(latents)
+    y = decoder(z)
 
     print(f"mean token matching: {mean_similarity(x, y)}\n")
     
@@ -137,9 +137,9 @@ def evaluate_ae(encoder, decoder, smiles, eval_n, params):
 
     one_hots = to_one_hot(sample_smiles, params)
 
-    latents = encoder(one_hots)
+    _, _, z = encoder(one_hots)
 
-    y = decoder(latents)
+    y = decoder(z)
     
     out_smiles = from_one_hot(torch.softmax(y, dim=2), params)
     

@@ -37,10 +37,32 @@ class Encoder(nn.Module):
                 out_features=self.params.LATENT_DIM, 
             )
         )
+        
+        self.z_mean = nn.Linear(
+            in_features=self.params.LATENT_DIM, 
+            out_features=self.params.LATENT_DIM
+        )
+        
+        self.z_logvar = nn.Linear(
+            in_features=self.params.LATENT_DIM, 
+            out_features=self.params.LATENT_DIM
+        )
 
     def forward(self, x):
         _, hidden = self.gru(x)
         
         hidden = self.dense_encoder(hidden.squeeze(0))
         
-        return hidden
+        # Latent Distribution
+        
+        z_mean = self.z_mean(hidden)
+        
+        z_logvar = self.z_logvar(hidden)
+        
+        # Latent Sample
+        
+        epsilon = torch.randn_like(input=z_mean, device=z_mean.device)
+        
+        z = z_mean + torch.exp(0.5 * z_logvar) * epsilon
+        
+        return z_mean, z_logvar, z
