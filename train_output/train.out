@@ -1,0 +1,13 @@
+no change     /software/python-anaconda-2022.05-el8-x86_64/condabin/conda
+no change     /software/python-anaconda-2022.05-el8-x86_64/bin/conda
+no change     /software/python-anaconda-2022.05-el8-x86_64/bin/conda-env
+no change     /software/python-anaconda-2022.05-el8-x86_64/bin/activate
+no change     /software/python-anaconda-2022.05-el8-x86_64/bin/deactivate
+no change     /software/python-anaconda-2022.05-el8-x86_64/etc/profile.d/conda.sh
+no change     /software/python-anaconda-2022.05-el8-x86_64/etc/fish/conf.d/conda.fish
+no change     /software/python-anaconda-2022.05-el8-x86_64/shell/condabin/Conda.psm1
+no change     /software/python-anaconda-2022.05-el8-x86_64/shell/condabin/conda-hook.ps1
+no change     /software/python-anaconda-2022.05-el8-x86_64/lib/python3.9/site-packages/xontrib/conda.xsh
+no change     /software/python-anaconda-2022.05-el8-x86_64/etc/profile.d/conda.csh
+no change     /home/jshe/.bashrc
+No action taken.

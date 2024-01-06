@@ -58,6 +58,10 @@ KL_divergence = lambda z_mean, z_logvar : -0.5 * torch.sum(1 + z_logvar - z_mean
 # Training Loop
 
 log_file = 'log.csv'
+
+with open(log_file, "w") as f:
+    f.write("i, loss, similarity\n")
+        
 i = 0
 
 start_time = time.time()
@@ -86,7 +90,7 @@ for epoch_n in range(EPOCHS):
         decoder_optimizer.step()
         
         # Log
-        
+
         if (i % 10) == 0:
             encoder.eval()
             decoder.eval()
@@ -111,8 +115,8 @@ for epoch_n in range(EPOCHS):
             # Save parameters
             
             if (i % 20) == 0:
-                torch.save(encoder.state_dict(), 'encoder_weights.pth')
-                torch.save(decoder.state_dict(), 'decoder_weights.pth')
+                torch.save(encoder.state_dict(), 'weights/encoder_weights.pth')
+                torch.save(decoder.state_dict(), 'weights/decoder_weights.pth')
         
         i += 1
         
