@@ -20,8 +20,8 @@ class DecodeNext(nn.Module):
             ), 
             nn.Tanh(), 
             
-            nn.Dropout(p=0.1), 
-            nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
+            #nn.Dropout(p=0.1), 
+            #nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
             
             nn.Linear(
                 in_features=self.params.GRU_HIDDEN_DIM, 
@@ -29,8 +29,8 @@ class DecodeNext(nn.Module):
             ), 
             nn.Tanh(), 
             
-            nn.Dropout(p=0.1), 
-            nn.BatchNorm1d(num_features=self.params.ALPHABET_LEN), 
+            #nn.Dropout(p=0.1), 
+            #nn.BatchNorm1d(num_features=self.params.ALPHABET_LEN), 
             
             nn.Linear(
                 in_features=self.params.ALPHABET_LEN, 
@@ -68,8 +68,8 @@ class Decoder(nn.Module):
             ),
             nn.Tanh(), 
             
-            nn.Dropout(p=0.1), 
-            nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
+            #nn.Dropout(p=0.1), 
+            #nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
             
             nn.Linear(
                 in_features=self.params.GRU_HIDDEN_DIM, 
@@ -77,8 +77,8 @@ class Decoder(nn.Module):
             ), 
             nn.Tanh(), 
             
-            nn.Dropout(p=0.1), 
-            nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
+            #nn.Dropout(p=0.1), 
+            #nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
             
             nn.Linear(
                 in_features=self.params.GRU_HIDDEN_DIM, 

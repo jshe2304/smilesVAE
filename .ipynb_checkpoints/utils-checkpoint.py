@@ -61,7 +61,7 @@ def from_one_hot(one_hot_smiles, params):
         smile = ""
         for one_hot in one_hot_smile:
             c = params.itos[int(torch.argmax(one_hot))]
-            smile += c if c != '<BOS>' and c != '<EOS>' else ''
+            smile += c #if c != '<BOS>' and c != '<EOS>' else ''
         smiles.append(smile)
     
     return smiles
