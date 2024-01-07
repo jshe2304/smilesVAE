@@ -43,13 +43,12 @@ class DecodeNext(nn.Module):
         # hidden.shape: (D * num_layers, N, H_out)
         
         out, hidden = self.gru(inp, hidden)
-        
         # out.shape:    (N, L, D * H_out)
         # hidden.shape: (D * num_layers, N, H_out)
         
         # out.shape:    (N, L, D * H_out) -> (N, D * H_out)
         
-        prediction = self.dense_decoder(out.squeeze())
+        prediction = self.dense_decoder(out.squeeze(1))
         
         # prediction.shape: (N, ALPHABET_LEN)
 
@@ -87,12 +86,15 @@ class Decoder(nn.Module):
         )
         
         self.decode_next = DecodeNext(params)
+        
+        self.softmax = nn.Softmax(dim=2)
     
-    def forward(self, latent, target=None):
+    def forward(self, latent, target=None, softmax=True):
         # latent.shape = (N, LATENT_DIM)
+        
         hidden = self.dense_decoder(latent).unsqueeze(0)
         # hidden.shape = (1, N, GRU_HIDDEN_DIM)
-        
+
         *_, batch_size, _ = hidden.shape
         
         y = torch.zeros(
@@ -100,24 +102,25 @@ class Decoder(nn.Module):
             dtype=torch.float32
         )
 
-        inp = torch.zeros(
+        inp = torch.full(
+            fill_value=-10,
             size=(batch_size, 1, self.params.ALPHABET_LEN), 
             dtype=torch.float32
         )
-        inp[:, :, self.params.stoi['<BOS>']] = 1
+        inp[:, :, self.params.stoi['<BOS>']] = 10
         y[:, 0, :] = inp.squeeze()
 
         for i in range(1, self.params.SMILE_LEN):
             
             # inp.shape = (N, 1, ALPHABET_LEN)
             prediction, hidden = self.decode_next(inp, hidden)
-            # prediction.shape = ()
+            # prediction.shape: (N, ALPHABET_LEN)
 
             y[:, i, :] = prediction
 
             if target != None:
-                inp = target[:, i:i+1, :]
+                inp = target[:, :i+1, :]
             else:
                 inp = prediction.unsqueeze(1)
 
-        return y
+        return self.softmax(y)
