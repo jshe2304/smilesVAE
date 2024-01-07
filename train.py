@@ -19,7 +19,7 @@ print(f"Imports done...")
 
 # Training Parameters
 
-n = 1000 
+n = 1500000 
 batch_size = 16
 LR = 0.0001
 EPOCHS = 5
