@@ -39,6 +39,7 @@ class DecodeNext(nn.Module):
         )
 
     def forward(self, inp, hidden):
+
         # inp.shape:    (N, L, H_in)
         # hidden.shape: (D * num_layers, N, H_out)
         
@@ -86,8 +87,6 @@ class Decoder(nn.Module):
         )
         
         self.decode_next = DecodeNext(params)
-        
-        self.softmax = nn.Softmax(dim=2)
     
     def forward(self, latent, target=None, softmax=True):
         # latent.shape = (N, LATENT_DIM)
@@ -123,4 +122,4 @@ class Decoder(nn.Module):
             else:
                 inp = prediction.unsqueeze(1)
 
-        return self.softmax(y)
+        return y

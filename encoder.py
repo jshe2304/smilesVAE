@@ -35,7 +35,8 @@ class Encoder(nn.Module):
             nn.Linear(
                 in_features=self.params.LATENT_DIM, 
                 out_features=self.params.LATENT_DIM, 
-            )
+            ), 
+            nn.Tanh()
         )
         
         self.z_mean = nn.Linear(
@@ -49,6 +50,20 @@ class Encoder(nn.Module):
         )
 
     def forward(self, x):
+        '''
+        (Batch Size, Sequence Length, Alphabet Length)
+         | gru
+        (1, Batch Size, Hidden Size)
+         | squeeze
+        (Batch Size, Hidden Size)
+         | dense sequential
+        (Batch Size, Latent Size)
+         | z_mean                   | z_logvar
+        (Batch Size, Latent Size)  (Batch Size, Latent Size)
+        '''
+        
+        # GRU and Linear Dense Layers
+        
         _, hidden = self.gru(x)
         
         hidden = self.dense_encoder(hidden.squeeze(0))

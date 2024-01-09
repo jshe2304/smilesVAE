@@ -19,7 +19,7 @@ print(f"Imports done...")
 
 # Training Parameters
 
-n = 1500000
+n = 500
 batch_size = 16
 LR = 0.0001
 EPOCHS = 5
@@ -53,12 +53,12 @@ decoder.train()
 encoder_optimizer = optim.Adam(encoder.parameters(), lr=LR)
 decoder_optimizer = optim.Adam(decoder.parameters(), lr=LR)
 
-CE_loss = lambda predicted, target : torch.mean(-torch.sum(target * torch.log(predicted)))/21
+CE_loss = nn.CrossEntropyLoss()
 KL_divergence = lambda z_mean, z_logvar : -0.5 * torch.sum(1 + z_logvar - z_mean ** 2 - torch.exp(z_logvar))
 
 # Training Loop
 
-log_file = 'log.csv'
+log_file = 'train_output/log.csv'
 
 with open(log_file, "w") as f:
     f.write("i,loss,similarity\n")
@@ -84,7 +84,7 @@ for epoch_n in range(EPOCHS):
         
         #loss = CE_loss(y.transpose(1, 2), torch.argmax(x, dim=2)) + KL_divergence(z_mean, z_logvar) * 0.01
         
-        loss = CE_loss(x_hat, x)
+        loss = CE_loss(x_hat.transpose(1, 2), torch.argmax(x, dim=2))
         
         loss.backward()
         

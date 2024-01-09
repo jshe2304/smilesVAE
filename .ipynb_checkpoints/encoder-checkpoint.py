@@ -35,7 +35,8 @@ class Encoder(nn.Module):
             nn.Linear(
                 in_features=self.params.LATENT_DIM, 
                 out_features=self.params.LATENT_DIM, 
-            )
+            ), 
+            nn.Tanh()
         )
         
         self.z_mean = nn.Linear(

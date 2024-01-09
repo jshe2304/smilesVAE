@@ -39,6 +39,7 @@ class DecodeNext(nn.Module):
         )
 
     def forward(self, inp, hidden):
+
         # inp.shape:    (N, L, H_in)
         # hidden.shape: (D * num_layers, N, H_out)
         
@@ -86,8 +87,6 @@ class Decoder(nn.Module):
         )
         
         self.decode_next = DecodeNext(params)
-        
-        self.softmax = nn.Softmax(dim=2)
     
     def forward(self, latent, target=None, softmax=True):
         # latent.shape = (N, LATENT_DIM)
@@ -103,11 +102,11 @@ class Decoder(nn.Module):
         )
 
         inp = torch.full(
-            fill_value=-10,
+            fill_value=-16,
             size=(batch_size, 1, self.params.ALPHABET_LEN), 
             dtype=torch.float32
         )
-        inp[:, :, self.params.stoi['<BOS>']] = 10
+        inp[:, :, self.params.stoi['<BOS>']] = 16
         y[:, 0, :] = inp.squeeze()
 
         for i in range(1, self.params.SMILE_LEN):
@@ -119,8 +118,8 @@ class Decoder(nn.Module):
             y[:, i, :] = prediction
 
             if target != None:
-                inp = target[:, :i+1, :]
+                inp = target[:, i:i+1, :]
             else:
                 inp = prediction.unsqueeze(1)
 
-        return self.softmax(y)
+        return y
