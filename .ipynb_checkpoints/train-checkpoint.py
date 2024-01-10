@@ -22,13 +22,13 @@ print(f"Imports done...")
 n = 500
 batch_size = 16
 LR = 0.0001
-EPOCHS = 5
+EPOCHS = 3
 
 # Training Data
 
 print(f"Loading training data...")
 
-smiles = list(fetch_smiles_gdb13('./data/gdb13/')[0])
+smiles = fetch_smiles_gdb13('./data/gdb13').values.tolist()
 
 params = make_params(smiles=smiles, GRU_HIDDEN_DIM=256, LATENT_DIM=128)
 
@@ -61,7 +61,7 @@ KL_divergence = lambda z_mean, z_logvar : -0.5 * torch.sum(1 + z_logvar - z_mean
 log_file = 'train_output/log.csv'
 
 with open(log_file, "w") as f:
-    f.write("i,loss,similarity\n")
+    f.write("i,time,loss,similarity\n")
 
 i = 0
 
@@ -78,7 +78,12 @@ for epoch_n in range(EPOCHS):
         # VAE Forward
         
         z_mean, z_logvar, z = encoder(x)
-        x_hat = decoder(z, target=x)
+        
+        if epoch_n == 1:
+            x_logits = (x - 0.5) * 16
+            x_hat = decoder(z, target=x)
+        else:
+            x_hat = decoder(z)
         
         # Loss
         
@@ -91,7 +96,7 @@ for epoch_n in range(EPOCHS):
         encoder_optimizer.step()
         decoder_optimizer.step()
         
-        # Log
+        # Logging
 
         if (i % 10) == 0:
             encoder.eval()
@@ -109,7 +114,7 @@ for epoch_n in range(EPOCHS):
             # Output to log
             
             with open(log_file, "a") as f:
-                f.write(f'{i},{float(loss)},{similarity}\n')
+                f.write(f'{i},{time.time() - start_time},{float(loss)},{similarity}\n')
             
             encoder.train()
             decoder.train()

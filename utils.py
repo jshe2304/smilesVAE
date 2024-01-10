@@ -33,13 +33,15 @@ def fetch_smiles_gdb13(zinc_dir: str):
 
     smiles = pd.concat(smiles)
     
-    return smiles
+    return smiles[0]
 
 
 Params = namedtuple(
     'Params', 
     ['N', 'SMILE_LEN', 'alphabet', 'ALPHABET_LEN', 'stoi', 'itos', 'GRU_HIDDEN_DIM', 'LATENT_DIM']
 )
+
+
 
 def make_params(smiles=None, GRU_HIDDEN_DIM=128, LATENT_DIM=128, from_file=None, to_file=None):
     if smiles is None and not from_file:
@@ -58,10 +60,10 @@ def make_params(smiles=None, GRU_HIDDEN_DIM=128, LATENT_DIM=128, from_file=None,
     
     params = Params(
         N = len(smiles), 
-        SMILE_LEN = max(len(smile) for smile in smiles) + 2, 
+        SMILE_LEN = max(len(smile) for smile in smiles), 
         alphabet = alphabet, 
         ALPHABET_LEN = len(alphabet), 
-        stoi = {c: int(i) for i, c in enumerate(alphabet)},
+        stoi = {c: int(i) for i, c in enumerate(alphabet)}, 
         itos = alphabet, 
         GRU_HIDDEN_DIM = GRU_HIDDEN_DIM, 
         LATENT_DIM = LATENT_DIM
@@ -84,15 +86,6 @@ def mean_similarity(x, y):
             dtype=torch.float32
         )
     ))
-
-def stos(encoder, decoder, smile, params):
-    x = to_one_hot([smile], params)
-    
-    latent = encoder(x)
-    
-    y = decoder(latent)
-    
-    return str(from_one_hot(torch.softmax(y, dim=2), params))
 
 def evaluate_ae(encoder, decoder, smiles, eval_n, params):
     encoder.eval()

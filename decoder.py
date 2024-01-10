@@ -10,48 +10,23 @@ class DecodeNext(nn.Module):
         self.gru = nn.GRU(
             input_size=self.params.ALPHABET_LEN, 
             hidden_size=self.params.GRU_HIDDEN_DIM, 
-            batch_first=True
+            batch_first=True, 
         )
         
-        self.dense_decoder = nn.Sequential(
-            nn.Linear(
-                in_features=self.params.GRU_HIDDEN_DIM, 
-                out_features=self.params.GRU_HIDDEN_DIM
-            ), 
-            nn.Tanh(), 
-            
-            #nn.Dropout(p=0.1), 
-            #nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
+        self.fc_network = nn.Sequential(
             
             nn.Linear(
                 in_features=self.params.GRU_HIDDEN_DIM, 
-                out_features=self.params.ALPHABET_LEN
-            ), 
-            nn.Tanh(), 
-            
-            #nn.Dropout(p=0.1), 
-            #nn.BatchNorm1d(num_features=self.params.ALPHABET_LEN), 
-            
-            nn.Linear(
-                in_features=self.params.ALPHABET_LEN, 
                 out_features=self.params.ALPHABET_LEN
             )
+            
         )
 
     def forward(self, inp, hidden):
 
-        # inp.shape:    (N, L, H_in)
-        # hidden.shape: (D * num_layers, N, H_out)
-        
         out, hidden = self.gru(inp, hidden)
-        # out.shape:    (N, L, D * H_out)
-        # hidden.shape: (D * num_layers, N, H_out)
-        
-        # out.shape:    (N, L, D * H_out) -> (N, D * H_out)
-        
-        prediction = self.dense_decoder(out.squeeze(1))
-        
-        # prediction.shape: (N, ALPHABET_LEN)
+
+        prediction = self.fc_network(out.squeeze(1))
 
         return prediction, hidden
 
@@ -61,37 +36,19 @@ class Decoder(nn.Module):
         
         self.params = params
         
-        self.dense_decoder = nn.Sequential(
+        self.fc_network = nn.Sequential(
             nn.Linear(
                 in_features=self.params.LATENT_DIM, 
                 out_features=self.params.GRU_HIDDEN_DIM
-            ),
-            nn.Tanh(), 
-            
-            #nn.Dropout(p=0.1), 
-            #nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
-            
-            nn.Linear(
-                in_features=self.params.GRU_HIDDEN_DIM, 
-                out_features=self.params.GRU_HIDDEN_DIM
-            ), 
-            nn.Tanh(), 
-            
-            #nn.Dropout(p=0.1), 
-            #nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
-            
-            nn.Linear(
-                in_features=self.params.GRU_HIDDEN_DIM, 
-                out_features=self.params.GRU_HIDDEN_DIM
-            ), 
+            )
         )
         
         self.decode_next = DecodeNext(params)
     
-    def forward(self, latent, target=None, softmax=True):
+    def forward(self, latent, target=None):
         # latent.shape = (N, LATENT_DIM)
         
-        hidden = self.dense_decoder(latent).unsqueeze(0)
+        hidden = self.fc_network(latent).unsqueeze(0)
         # hidden.shape = (1, N, GRU_HIDDEN_DIM)
 
         *_, batch_size, _ = hidden.shape

@@ -10,33 +10,14 @@ class Encoder(nn.Module):
         self.gru = nn.GRU(
             input_size=self.params.ALPHABET_LEN, 
             hidden_size=self.params.GRU_HIDDEN_DIM, 
-            batch_first=True
+            batch_first=True, 
         )
         
-        self.dense_encoder = nn.Sequential(
+        self.fc_network = nn.Sequential(
             nn.Linear(
                 in_features=self.params.GRU_HIDDEN_DIM, 
-                out_features=self.params.GRU_HIDDEN_DIM
-            ), 
-            nn.Tanh(), 
-            
-            #nn.Dropout(p=0.1), 
-            #nn.BatchNorm1d(num_features=self.params.GRU_HIDDEN_DIM), 
-            
-            nn.Linear(
-                in_features=self.params.GRU_HIDDEN_DIM, 
-                out_features=self.params.LATENT_DIM
-            ), 
-            nn.Tanh(), 
-            
-            #nn.Dropout(p=0.1), 
-            #nn.BatchNorm1d(num_features=self.params.LATENT_DIM), 
-            
-            nn.Linear(
-                in_features=self.params.LATENT_DIM, 
                 out_features=self.params.LATENT_DIM, 
-            ), 
-            nn.Tanh()
+            )
         )
         
         self.z_mean = nn.Linear(
@@ -66,7 +47,7 @@ class Encoder(nn.Module):
         
         _, hidden = self.gru(x)
         
-        hidden = self.dense_encoder(hidden.squeeze(0))
+        hidden = self.fc_network(hidden.squeeze(0))
         
         # Latent Distribution
         

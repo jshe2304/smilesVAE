@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 
 def to_one_hot(smiles: list[str], params):
     
@@ -33,3 +34,37 @@ def from_one_hot(one_hot_smiles, params):
         smiles.append(smile)
     
     return smiles
+
+def stos(encoder, decoder, smile, params):
+    x = to_one_hot(smile, params)
+    
+    latent = encoder(x)
+    
+    y = decoder(latent)
+    
+    return str(from_one_hot(torch.softmax(y, dim=2), params))
+
+def pack(smiles: list[str], ctoi, embedding_dim=16):
+    
+    # Create index-wise vectorization
+    
+    vectorized_smiles = [torch.Tensor([ctoi.get(c) for c in smile]) for smile in smiles]
+    vectorized_smiles.sort(key=lambda x: len(x), reverse=True)
+
+    smiles_lengths = [len(smile) for smile in vectorized_smiles]
+    
+    # Create Padded Tensor
+    
+    max_len = max(len(smile) for smile in smiles)
+    
+    smiles_tensor = torch.zeros(size=(len(vectorized_smiles), max_len), dtype=torch.int)
+    for i, smile in enumerate(vectorized_smiles):
+        smiles_tensor[i, :len(smile)] = smile
+    
+    # Embedding
+    
+    smiles_embedding = nn.Embedding(len(ctoi), embedding_dim)(smiles_tensor)
+    
+    # Pack
+    
+    return nn.utils.rnn.pack_padded_sequence(smiles_embedding, smiles_lengths, batch_first=True)
