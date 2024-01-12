@@ -14,12 +14,14 @@ class DecodeNext(nn.Module):
         )
         
         self.fc_network = nn.Sequential(
-            
+            nn.Linear(
+                in_features=self.params.GRU_HIDDEN_DIM, 
+                out_features=self.params.GRU_HIDDEN_DIM, 
+            ), 
             nn.Linear(
                 in_features=self.params.GRU_HIDDEN_DIM, 
                 out_features=self.params.ALPHABET_LEN
             )
-            
         )
 
     def forward(self, inp, hidden):
@@ -39,6 +41,10 @@ class Decoder(nn.Module):
         self.fc_network = nn.Sequential(
             nn.Linear(
                 in_features=self.params.LATENT_DIM, 
+                out_features=self.params.GRU_HIDDEN_DIM
+            ), 
+            nn.Linear(
+                in_features=self.params.GRU_HIDDEN_DIM, 
                 out_features=self.params.GRU_HIDDEN_DIM
             )
         )

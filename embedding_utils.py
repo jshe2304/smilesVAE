@@ -9,7 +9,7 @@ def to_one_hot(smiles: list[str], params):
         size=(len(smiles), params.SMILE_LEN, params.ALPHABET_LEN), 
         dtype=torch.float32
     )
-    
+
     for i, smile in enumerate(smiles):
         
         # start sequence with BOS
@@ -23,14 +23,16 @@ def to_one_hot(smiles: list[str], params):
     
     return one_hots
 
-def from_one_hot(one_hot_smiles, params):
+def from_one_hot(one_hot_smiles, params, show_padding=False):
     smiles = []
     
     for one_hot_smile in one_hot_smiles:
         smile = ""
         for one_hot in one_hot_smile:
             c = params.itos[int(torch.argmax(one_hot))]
-            smile += c #if c != '<BOS>' and c != '<EOS>' else ''
+            if c == '<BOS>': smile += '<' if show_padding else ''
+            elif c == '<EOS>': smile += '>' if show_padding else ''
+            else: smile += c
         smiles.append(smile)
     
     return smiles

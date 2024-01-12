@@ -1,36 +1,42 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
-
-import pandas as pd
 
 import time
 import os
 import random
+import math
 
 from utils import *
 from embedding_utils import *
 from encoder import Encoder
-from decoder import DecodeNext, Decoder
+from decoder import Decoder
 
 print(f"Imports done...")
 
 # Training Parameters
 
-n = 500
+n = 1600000
 batch_size = 16
-LR = 0.0001
-EPOCHS = 3
+LR = 0.00000001
+EPOCHS = 10
+from_existing = False
+CE_label_smoothing = 0
+data_dir = './data/gdb13/'
+weights_dir = './weights-3/'
+log_file = './logs/log-3.csv'
 
 # Training Data
 
 print(f"Loading training data...")
 
-smiles = fetch_smiles_gdb13('./data/gdb13').values.tolist()
+smiles = fetch_smiles_gdb13(data_dir).values.tolist()
 
-params = make_params(smiles=smiles, GRU_HIDDEN_DIM=256, LATENT_DIM=128)
+for i, smile in enumerate(smiles):
+    smiles[i] = smile.replace('Cl', 'L')
+
+params = make_params(smiles=smiles, GRU_HIDDEN_DIM=512, LATENT_DIM=256)
 
 one_hots = to_one_hot(random.sample(smiles, n), params)
 
@@ -45,6 +51,10 @@ print("Training Model...")
 encoder = Encoder(params)
 decoder = Decoder(params)
 
+if from_existing:
+    encoder.load_state_dict(torch.load(weights_dir + 'encoder_weights.pth'))
+    decoder.load_state_dict(torch.load(weights_dir + 'decoder_weights.pth'))
+
 encoder.train()
 decoder.train()
 
@@ -53,15 +63,18 @@ decoder.train()
 encoder_optimizer = optim.Adam(encoder.parameters(), lr=LR)
 decoder_optimizer = optim.Adam(decoder.parameters(), lr=LR)
 
-CE_loss = nn.CrossEntropyLoss()
-KL_divergence = lambda z_mean, z_logvar : -0.5 * torch.sum(1 + z_logvar - z_mean ** 2 - torch.exp(z_logvar))
+#class_weights = torch.full((params.ALPHABET_LEN, ), 1, dtype=torch.float32)
+#class_weights[params.stoi['C']] = 0.3
+
+CE_loss = nn.CrossEntropyLoss(label_smoothing=CE_label_smoothing)
+KL_divergence = lambda z_mean, z_logvar : -0.5 * torch.mean(1 + z_logvar - z_mean ** 2 - torch.exp(z_logvar))
+logistic = lambda x: 1/(1 + math.exp(-x))
 
 # Training Loop
 
-log_file = 'train_output/log.csv'
-
-with open(log_file, "w") as f:
-    f.write("i,time,loss,similarity\n")
+if not from_existing:
+    with open(log_file, "w") as f:
+        f.write("i,time,loss,similarity\n")
 
 i = 0
 
@@ -70,6 +83,8 @@ start_time = time.time()
 for epoch_n in range(EPOCHS):
     print(f"Epoch {epoch_n}...")
 
+    #KL_weight = 0.1 * logistic(epoch_n - EPOCHS * 0.6)
+    
     for x in train_dataloader:
 
         encoder_optimizer.zero_grad()
@@ -78,19 +93,14 @@ for epoch_n in range(EPOCHS):
         # VAE Forward
         
         z_mean, z_logvar, z = encoder(x)
+        x_hat = decoder(z)
         
-        if epoch_n == 1:
-            x_logits = (x - 0.5) * 16
-            x_hat = decoder(z, target=x)
-        else:
-            x_hat = decoder(z)
-        
+        x_hat = x_hat.transpose(1, 2)
+        x_labels = torch.argmax(x, dim=2)
+
         # Loss
-        
-        #loss = CE_loss(y.transpose(1, 2), torch.argmax(x, dim=2)) + KL_divergence(z_mean, z_logvar) * 0.01
-        
-        loss = CE_loss(x_hat.transpose(1, 2), torch.argmax(x, dim=2))
-        
+
+        loss = CE_loss(x_hat, x_labels) #+ KL_divergence(z_mean, z_logvar) * KL_weight
         loss.backward()
         
         encoder_optimizer.step()
@@ -122,8 +132,8 @@ for epoch_n in range(EPOCHS):
             # Save parameters
             
             if (i % 20) == 0:
-                torch.save(encoder.state_dict(), 'weights/encoder_weights.pth')
-                torch.save(decoder.state_dict(), 'weights/decoder_weights.pth')
+                torch.save(encoder.state_dict(), weights_dir + 'encoder_weights.pth')
+                torch.save(decoder.state_dict(), weights_dir + 'decoder_weights.pth')
         
         i += 1
 

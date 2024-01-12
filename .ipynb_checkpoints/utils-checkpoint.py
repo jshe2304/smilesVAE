@@ -41,8 +41,6 @@ Params = namedtuple(
     ['N', 'SMILE_LEN', 'alphabet', 'ALPHABET_LEN', 'stoi', 'itos', 'GRU_HIDDEN_DIM', 'LATENT_DIM']
 )
 
-
-
 def make_params(smiles=None, GRU_HIDDEN_DIM=128, LATENT_DIM=128, from_file=None, to_file=None):
     if smiles is None and not from_file:
         raise ValueError(
@@ -60,7 +58,7 @@ def make_params(smiles=None, GRU_HIDDEN_DIM=128, LATENT_DIM=128, from_file=None,
     
     params = Params(
         N = len(smiles), 
-        SMILE_LEN = max(len(smile) for smile in smiles), 
+        SMILE_LEN = max(len(smile) for smile in smiles) + 2, 
         alphabet = alphabet, 
         ALPHABET_LEN = len(alphabet), 
         stoi = {c: int(i) for i, c in enumerate(alphabet)}, 
@@ -88,27 +86,18 @@ def mean_similarity(x, y):
     ))
 
 def evaluate_ae(encoder, decoder, smiles, eval_n, params):
+    
     encoder.eval()
     decoder.eval()
     
+    smiles = random.sample(smiles, eval_n)
+    
+    one_hots = to_one_hot(smiles, params)
+    
     with torch.no_grad():
-        x = to_one_hot(random.sample(smiles, eval_n), params)
-
-        _, _, z = encoder(x)
-
-        y = decoder(z)
-
-        print(f"mean token matching: {mean_similarity(x, y)}\n")
-
-        sample_smiles = random.sample(smiles, 10)
-
-        one_hots = to_one_hot(sample_smiles, params)
-
         _, _, z = encoder(one_hots)
-
-        y = decoder(z)
-
-        out_smiles = from_one_hot(torch.softmax(y, dim=2), params)
-
-        print(sample_smiles)
-        print(out_smiles)
+        x_hat = decoder(z)
+    
+    pred_smiles = from_one_hot(torch.softmax(x_hat, dim=2), params)
+    
+    return pd.DataFrame({'target': smiles, 'predicted': pred_smiles})

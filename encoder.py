@@ -17,6 +17,10 @@ class Encoder(nn.Module):
             nn.Linear(
                 in_features=self.params.GRU_HIDDEN_DIM, 
                 out_features=self.params.LATENT_DIM, 
+            ), 
+            nn.Linear(
+                in_features=self.params.LATENT_DIM, 
+                out_features=self.params.LATENT_DIM
             )
         )
         
@@ -57,7 +61,7 @@ class Encoder(nn.Module):
         
         # Latent Sample
         
-        epsilon = torch.randn_like(input=z_mean, device=z_mean.device)
+        epsilon = torch.randn_like(input=z_logvar, device=z_logvar.device)
         
         z = z_mean + torch.exp(0.5 * z_logvar) * epsilon
         
