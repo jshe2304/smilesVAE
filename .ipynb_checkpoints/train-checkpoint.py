@@ -18,14 +18,14 @@ print(f"Imports done...")
 # Training Parameters
 
 n = 1600000
-batch_size = 16
-LR = 0.00000001
+batch_size = 32
+LR = 0.0001
 EPOCHS = 10
-from_existing = False
+from_existing = True
 CE_label_smoothing = 0
 data_dir = './data/gdb13/'
-weights_dir = './weights-3/'
-log_file = './logs/log-3.csv'
+weights_dir = './weights-5/'
+log_file = './logs/log-5.csv'
 
 # Training Data
 
@@ -66,17 +66,28 @@ decoder_optimizer = optim.Adam(decoder.parameters(), lr=LR)
 #class_weights = torch.full((params.ALPHABET_LEN, ), 1, dtype=torch.float32)
 #class_weights[params.stoi['C']] = 0.3
 
-CE_loss = nn.CrossEntropyLoss(label_smoothing=CE_label_smoothing)
+CE_loss = nn.CrossEntropyLoss()
 KL_divergence = lambda z_mean, z_logvar : -0.5 * torch.mean(1 + z_logvar - z_mean ** 2 - torch.exp(z_logvar))
 logistic = lambda x: 1/(1 + math.exp(-x))
 
 # Training Loop
+        
+i = 0
 
 if not from_existing:
     with open(log_file, "w") as f:
         f.write("i,time,loss,similarity\n")
 
-i = 0
+if from_existing:
+    # https://stackoverflow.com/questions/46258499/how-to-read-the-last-line-of-a-file-in-python
+    with open(log_file, 'rb') as f:
+        try:
+            f.seek(-2, os.SEEK_END)
+            while f.read(1) != b'\n':
+                f.seek(-2, os.SEEK_CUR)
+            i = int(f.readline().decode().split(',')[0]) + 10
+        except OSError:
+            None
 
 start_time = time.time()
 
@@ -108,7 +119,7 @@ for epoch_n in range(EPOCHS):
         
         # Logging
 
-        if (i % 10) == 0:
+        if (i % 100) == 0:
             encoder.eval()
             decoder.eval()
             
@@ -131,7 +142,7 @@ for epoch_n in range(EPOCHS):
             
             # Save parameters
             
-            if (i % 20) == 0:
+            if (i % 200) == 0:
                 torch.save(encoder.state_dict(), weights_dir + 'encoder_weights.pth')
                 torch.save(decoder.state_dict(), weights_dir + 'decoder_weights.pth')
         

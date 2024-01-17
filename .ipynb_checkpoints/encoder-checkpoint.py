@@ -18,6 +18,7 @@ class Encoder(nn.Module):
                 in_features=self.params.GRU_HIDDEN_DIM, 
                 out_features=self.params.LATENT_DIM, 
             ), 
+            nn.ReLU(), 
             nn.Linear(
                 in_features=self.params.LATENT_DIM, 
                 out_features=self.params.LATENT_DIM
