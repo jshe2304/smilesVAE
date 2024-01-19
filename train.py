@@ -17,19 +17,19 @@ from decoder import Decoder
 # TRAINING PARAMETERS
 # ===================
 
-BATCH_N = 32
+BATCH_SIZE = 32
 LR = 0.0001
 EPOCHS = 10
 KL_WEIGHT = 0.1
 KL_ANNEAL = 0.4
 
-NEW_RUN = True
+NEW_RUN = False
 DATADIR = './data/gdb13/'
 OUTDIR = './run-5/'
 LOGFILE = os.path.join(OUTDIR, 'log-5')
 
 CE_LOSS = nn.CrossEntropyLoss()
-KL_DIV = lambda z_mean, z_logvar : -0.5 * torch.mean(1 + z_logvar - z_mean ** 2 - torch.exp(z_logvar))
+KL_DIV = lambda mean, logvar : -0.5 * torch.mean(1 + logvar - mean ** 2 - torch.exp(logvar))
 LOGISTIC = lambda x: 1/(1 + math.exp(-x))
 
 if __name__ == "__main__":
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     
     smiles_tensor = to_one_hot(smiles_train, params)
     
-    train_dataloader = DataLoader(smiles_tensor, batch_size=batch_size, shuffle=True)
+    train_dataloader = DataLoader(smiles_tensor, batch_size=BATCH_SIZE, shuffle=True)
     
     # =================
     # MODEL & OPTIMIZER
@@ -155,7 +155,7 @@ if __name__ == "__main__":
             # ==========
 
             if (i % 200) == 0:
-                torch.save(encoder.state_dict(), weights_dir + 'encoder_weights.pth')
-                torch.save(decoder.state_dict(), weights_dir + 'decoder_weights.pth')
+                torch.save(encoder.state_dict(), OUTDIR + 'encoder_weights.pth')
+                torch.save(decoder.state_dict(), OUTDIR + 'decoder_weights.pth')
 
             i += 1

@@ -17,7 +17,3 @@ See 'conda init --help' for more information and options.
 IMPORTANT: You may need to close and restart your shell after running 'conda init'.
 
 
-  File "/home/jshe/smiles_vae/train.py", line 72
-    with open(, "w") as f:
-              ^
-SyntaxError: invalid syntax
