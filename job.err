@@ -17,4 +17,7 @@ See 'conda init --help' for more information and options.
 IMPORTANT: You may need to close and restart your shell after running 'conda init'.
 
 
-slurmstepd: error: *** JOB 14022646 ON midway3-0088 CANCELLED AT 2024-01-18T09:10:34 DUE TO TIME LIMIT ***
+  File "/home/jshe/smiles_vae/train.py", line 72
+    with open(, "w") as f:
+              ^
+SyntaxError: invalid syntax

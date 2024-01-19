@@ -21,20 +21,12 @@ def fetch_smiles_zinc(zinc_dir: str):
     
     return smiles
 
-def fetch_smiles_gdb13(zinc_dir: str):
-    smiles = []
+def fetch_smiles_gdb13(datadir: str):
 
-    for root, dirs, files in os.walk(zinc_dir):
-        for file in files:
-            if not file.endswith('.smi'):
-                continue
-            path = os.path.join(root, file)
-            smiles.append(pd.read_table(path, header=None))
-
-    smiles = pd.concat(smiles)
+    train = pd.read_table(os.path.join(datadir, 'train_gdb13.smi'), header=None)[0]
+    test = pd.read_table(os.path.join(datadir, 'test_gdb13.smi'), header=None)[0]
     
-    return smiles[0]
-
+    return list(train), list(test)
 
 Params = namedtuple(
     'Params', 
@@ -73,7 +65,7 @@ def make_params(smiles=None, GRU_HIDDEN_DIM=128, LATENT_DIM=128, from_file=None,
     
     return params
 
-def mean_similarity(x, y):
+def accuracy(x, y):
     x_argmax = torch.argmax(x, dim=2)
     y_argmax = torch.argmax(y, dim=2)
     

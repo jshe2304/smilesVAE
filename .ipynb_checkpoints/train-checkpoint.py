@@ -13,139 +13,149 @@ from embedding_utils import *
 from encoder import Encoder
 from decoder import Decoder
 
-print(f"Imports done...")
+# ===================
+# TRAINING PARAMETERS
+# ===================
 
-# Training Parameters
-
-n = 1600000
-batch_size = 32
+BATCH_N = 32
 LR = 0.0001
 EPOCHS = 10
-from_existing = True
-CE_label_smoothing = 0
-data_dir = './data/gdb13/'
-weights_dir = './weights-5/'
-log_file = './logs/log-5.csv'
+KL_WEIGHT = 0.1
+KL_ANNEAL = 0.4
 
-# Training Data
+NEW_RUN = True
+DATADIR = './data/gdb13/'
+OUTDIR = './run-5/'
+LOGFILE = os.path.join(OUTDIR, 'log-5')
 
-print(f"Loading training data...")
+CE_LOSS = nn.CrossEntropyLoss()
+KL_DIV = lambda z_mean, z_logvar : -0.5 * torch.mean(1 + z_logvar - z_mean ** 2 - torch.exp(z_logvar))
+LOGISTIC = lambda x: 1/(1 + math.exp(-x))
 
-smiles = fetch_smiles_gdb13(data_dir).values.tolist()
-
-for i, smile in enumerate(smiles):
-    smiles[i] = smile.replace('Cl', 'L')
-
-params = make_params(smiles=smiles, GRU_HIDDEN_DIM=512, LATENT_DIM=256)
-
-one_hots = to_one_hot(random.sample(smiles, n), params)
-
-train_dataloader = DataLoader(one_hots, batch_size=batch_size, shuffle=True)
-
-print("Done.")
-
-# Model
-
-print("Training Model...")
-
-encoder = Encoder(params)
-decoder = Decoder(params)
-
-if from_existing:
-    encoder.load_state_dict(torch.load(weights_dir + 'encoder_weights.pth'))
-    decoder.load_state_dict(torch.load(weights_dir + 'decoder_weights.pth'))
-
-encoder.train()
-decoder.train()
-
-# Optimizer and Losses
-
-encoder_optimizer = optim.Adam(encoder.parameters(), lr=LR)
-decoder_optimizer = optim.Adam(decoder.parameters(), lr=LR)
-
-#class_weights = torch.full((params.ALPHABET_LEN, ), 1, dtype=torch.float32)
-#class_weights[params.stoi['C']] = 0.3
-
-CE_loss = nn.CrossEntropyLoss()
-KL_divergence = lambda z_mean, z_logvar : -0.5 * torch.mean(1 + z_logvar - z_mean ** 2 - torch.exp(z_logvar))
-logistic = lambda x: 1/(1 + math.exp(-x))
-
-# Training Loop
-        
-i = 0
-
-if not from_existing:
-    with open(log_file, "w") as f:
-        f.write("i,time,loss,similarity\n")
-
-if from_existing:
-    # https://stackoverflow.com/questions/46258499/how-to-read-the-last-line-of-a-file-in-python
-    with open(log_file, 'rb') as f:
-        try:
-            f.seek(-2, os.SEEK_END)
-            while f.read(1) != b'\n':
-                f.seek(-2, os.SEEK_CUR)
-            i = int(f.readline().decode().split(',')[0]) + 10
-        except OSError:
-            None
-
-start_time = time.time()
-
-for epoch_n in range(EPOCHS):
-    print(f"Epoch {epoch_n}...")
-
-    #KL_weight = 0.1 * logistic(epoch_n - EPOCHS * 0.6)
+if __name__ == "__main__":
     
-    for x in train_dataloader:
+    # ==========
+    # DATALOADER
+    # ==========
+    
+    smiles_train, smiles_test = fetch_smiles_gdb13(DATADIR)
+    
+    params = make_params(smiles=smiles_train + smiles_test, GRU_HIDDEN_DIM=512, LATENT_DIM=256)
+    
+    smiles_tensor = to_one_hot(smiles_train, params)
+    
+    train_dataloader = DataLoader(smiles_tensor, batch_size=batch_size, shuffle=True)
+    
+    # =================
+    # MODEL & OPTIMIZER
+    # =================
+    
+    encoder = Encoder(params)
+    decoder = Decoder(params)
 
-        encoder_optimizer.zero_grad()
-        decoder_optimizer.zero_grad()
-        
-        # VAE Forward
-        
-        z_mean, z_logvar, z = encoder(x)
-        x_hat = decoder(z)
-        
-        x_hat = x_hat.transpose(1, 2)
-        x_labels = torch.argmax(x, dim=2)
+    if not NEW_RUN:
+        encoder.load_state_dict(torch.load(OUTDIR + 'encoder_weights.pth'))
+        decoder.load_state_dict(torch.load(OUTDIR + 'decoder_weights.pth'))
 
-        # Loss
+    encoder_optimizer = optim.Adam(encoder.parameters(), lr=LR)
+    decoder_optimizer = optim.Adam(decoder.parameters(), lr=LR)
 
-        loss = CE_loss(x_hat, x_labels) #+ KL_divergence(z_mean, z_logvar) * KL_weight
-        loss.backward()
-        
-        encoder_optimizer.step()
-        decoder_optimizer.step()
-        
-        # Logging
+    # =============
+    # TRAINING LOOP
+    # =============
+    
+    i = 0
+    
+    start_time = time.time()
 
-        if (i % 100) == 0:
-            encoder.eval()
-            decoder.eval()
-            
-            # Evaluate sample
-            
-            with torch.no_grad():
-                x = to_one_hot(random.sample(smiles, 100), params)
-                _, _, z = encoder(x)
-                x_hat = decoder(z)
+    if NEW_RUN or not os.path.isfile(LOGFILE):
+        with open(, "w") as f:
+            f.write("i,time,loss,ce,kl,accuracy\n")
+    else:
+        # https://stackoverflow.com/questions/46258499/how-to-read-the-last-line-of-a-file-in-python
+        with open(LOGFILE, 'rb') as f:
+            try:
+                f.seek(-2, os.SEEK_END)
+                while f.read(1) != b'\n':
+                    f.seek(-2, os.SEEK_CUR)
+                
+                last_line = f.readline().decode().split(',')
+                i = int(last_line[0])
+                start_time = float(last_line[1])
+            except OSError:
+                pass
 
-            similarity = mean_similarity(x, x_hat)
-            
-            # Output to log
-            
-            with open(log_file, "a") as f:
-                f.write(f'{i},{time.time() - start_time},{float(loss)},{similarity}\n')
+    for epoch in range(EPOCHS):
+
+        kl_weight = KL_WEIGHT * LOGISTIC(epoch - EPOCHS * KL_ANNEAL) # anneal in 60% of the way through
+
+        for x in train_dataloader:
             
             encoder.train()
             decoder.train()
+
+            encoder_optimizer.zero_grad()
+            decoder_optimizer.zero_grad()
             
-            # Save parameters
+            # ============
+            # FORWARD PASS
+            # ============
+
+            mean, logvar, z = encoder(x)
+            x_hat = decoder(z)
+
+            x_hat = x_hat.transpose(1, 2)
+            x_labels = torch.argmax(x, dim=2)
             
+            # ============
+            # Compute Loss
+            # ============
+
+            ce = CE_LOSS(x_hat, x_labels)
+            kl = KL_DIV(mean, logvar)
+            
+            loss = ce + kl * kl_weight
+            
+            # ====================
+            # BACKWARD PROPAGATION
+            # ====================
+            
+            loss.backward()
+
+            encoder_optimizer.step()
+            decoder_optimizer.step()
+            
+            # ===========
+            # Log Metrics
+            # ===========
+
+            if (i % 100) == 0:
+                encoder.eval()
+                decoder.eval()
+
+                # Evaluate Sample
+
+                with torch.no_grad():
+                    x = to_one_hot(random.sample(smiles_test, 100), params)
+                    _, _, z = encoder(x)
+                    x_hat = decoder(z)
+
+                accuracy = accuracy(x, x_hat)
+
+                # Write to Log
+
+                with open(log_file, "a") as f:
+                    t = time.time() - start_time
+                    f.write(
+                        f'{i},{t},{float(loss)},{float(ce)},{float(kl)},{accuracy}\n'
+                    )
+            
+            # ==========
+            # Save Model
+            # ==========
+
             if (i % 200) == 0:
                 torch.save(encoder.state_dict(), weights_dir + 'encoder_weights.pth')
                 torch.save(decoder.state_dict(), weights_dir + 'decoder_weights.pth')
-        
-        i += 1
 
-print(f"Done. Time Elapsed: {time.time() - start_time}")
+            i += 1
