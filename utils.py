@@ -65,16 +65,25 @@ def make_params(smiles=None, GRU_HIDDEN_DIM=128, LATENT_DIM=128, from_file=None,
     
     return params
 
-def accuracy(x, y):
-    x_argmax = torch.argmax(x, dim=2)
-    y_argmax = torch.argmax(y, dim=2)
+def token_accuracy(x, x_hat):
+    x = torch.argmax(x, dim=2)
+    x_hat = torch.argmax(x_hat, dim=2)
     
     return float(torch.mean(
         torch.mean(
-            (x_argmax == y_argmax), 
+            (x == x_hat), 
             dim=1, 
             dtype=torch.float32
         )
+    ))
+
+def percent_reconstructed(x, x_hat):
+    x = torch.argmax(x, dim=2)
+    x_hat = torch.argmax(x_hat, dim=2)
+    
+    return float(torch.mean(
+        torch.all(x == x_hat, dim=1), 
+        dtype=torch.float32
     ))
 
 def evaluate_ae(encoder, decoder, smiles, eval_n, params):

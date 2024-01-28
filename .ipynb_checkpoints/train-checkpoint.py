@@ -17,19 +17,19 @@ from decoder import Decoder
 # TRAINING PARAMETERS
 # ===================
 
-BATCH_N = 32
+BATCH_SIZE = 32
 LR = 0.0001
-EPOCHS = 10
-KL_WEIGHT = 0.1
-KL_ANNEAL = 0.4
+EPOCHS = 20
+KL_WEIGHT = 1
+KL_ANNEAL = None
 
-NEW_RUN = True
+NEW_RUN = False
 DATADIR = './data/gdb13/'
-OUTDIR = './run-5/'
-LOGFILE = os.path.join(OUTDIR, 'log-5')
+OUTDIR = './run-6/'
+LOGFILE = os.path.join(OUTDIR, 'log.csv')
 
 CE_LOSS = nn.CrossEntropyLoss()
-KL_DIV = lambda z_mean, z_logvar : -0.5 * torch.mean(1 + z_logvar - z_mean ** 2 - torch.exp(z_logvar))
+KL_DIV = lambda mean, logvar : -0.5 * torch.mean(1 + logvar - mean ** 2 - torch.exp(logvar))
 LOGISTIC = lambda x: 1/(1 + math.exp(-x))
 
 if __name__ == "__main__":
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     
     smiles_tensor = to_one_hot(smiles_train, params)
     
-    train_dataloader = DataLoader(smiles_tensor, batch_size=batch_size, shuffle=True)
+    train_dataloader = DataLoader(smiles_tensor, batch_size=BATCH_SIZE, shuffle=True)
     
     # =================
     # MODEL & OPTIMIZER
@@ -69,8 +69,8 @@ if __name__ == "__main__":
     start_time = time.time()
 
     if NEW_RUN or not os.path.isfile(LOGFILE):
-        with open(, "w") as f:
-            f.write("i,time,loss,ce,kl,accuracy\n")
+        with open(LOGFILE, "w") as f:
+            f.write("i,time,loss,ce,kl,accuracy,prec\n")
     else:
         # https://stackoverflow.com/questions/46258499/how-to-read-the-last-line-of-a-file-in-python
         with open(LOGFILE, 'rb') as f:
@@ -87,7 +87,7 @@ if __name__ == "__main__":
 
     for epoch in range(EPOCHS):
 
-        kl_weight = KL_WEIGHT * LOGISTIC(epoch - EPOCHS * KL_ANNEAL) # anneal in 60% of the way through
+        kl_weight = KL_WEIGHT * LOGISTIC(epoch - EPOCHS * KL_ANNEAL) if KL_ANNEAL else 1
 
         for x in train_dataloader:
             
@@ -132,22 +132,28 @@ if __name__ == "__main__":
             if (i % 100) == 0:
                 encoder.eval()
                 decoder.eval()
-
-                # Evaluate Sample
+                
+                # ======================
+                # Test Sample Evaluation
+                # ======================
 
                 with torch.no_grad():
                     x = to_one_hot(random.sample(smiles_test, 100), params)
                     _, _, z = encoder(x)
                     x_hat = decoder(z)
 
-                accuracy = accuracy(x, x_hat)
-
+                acc = token_accuracy(x, x_hat)
+                
+                prec = percent_reconstructed(x, x_hat)
+                
+                # ============
                 # Write to Log
+                # ============
 
-                with open(log_file, "a") as f:
+                with open(LOGFILE, "a") as f:
                     t = time.time() - start_time
                     f.write(
-                        f'{i},{t},{float(loss)},{float(ce)},{float(kl)},{accuracy}\n'
+                        f'{i},{t},{float(loss)},{float(ce)},{float(kl)},{acc},{prec}\n'
                     )
             
             # ==========
@@ -155,7 +161,7 @@ if __name__ == "__main__":
             # ==========
 
             if (i % 200) == 0:
-                torch.save(encoder.state_dict(), weights_dir + 'encoder_weights.pth')
-                torch.save(decoder.state_dict(), weights_dir + 'decoder_weights.pth')
+                torch.save(encoder.state_dict(), OUTDIR + 'encoder_weights.pth')
+                torch.save(decoder.state_dict(), OUTDIR + 'decoder_weights.pth')
 
             i += 1
