@@ -2,68 +2,64 @@ import torch
 import torch.nn as nn
 
 class Encoder(nn.Module):
-    def __init__(self, params):
+    '''
+    Compress token sequence into vector. Choice of CNN or RNN. 
+    
+    Token Sequence  -->  GRU/CNN  --> Dense  --> Variational Sampler  -->  Latent Vector
+    '''
+    
+    def __init__(self, params, data, *args):
         super().__init__()
         
-        self.params = params
+        # Workhorse RNN/CNN
 
-        self.gru = nn.GRU(
-            input_size=self.params.ALPHABET_LEN, 
-            hidden_size=self.params.GRU_HIDDEN_DIM, 
+        self.rnn = nn.GRU(
+            input_size=len(data.alphabet), 
+            hidden_size=params.hidden_dim, 
             batch_first=True, 
         )
+            
+        # Dense Layers
         
-        self.fc_network = nn.Sequential(
+        self.dense = nn.Sequential(
             nn.Linear(
-                in_features=self.params.GRU_HIDDEN_DIM, 
-                out_features=self.params.LATENT_DIM, 
+                in_features=params.hidden_dim, 
+                out_features=params.latent_dim, 
             ), 
             nn.ReLU(), 
             nn.Linear(
-                in_features=self.params.LATENT_DIM, 
-                out_features=self.params.LATENT_DIM
+                in_features=params.latent_dim, 
+                out_features=params.latent_dim
             )
         )
         
+        # Distribution-Defining Dense Layers
+        
         self.z_mean = nn.Linear(
-            in_features=self.params.LATENT_DIM, 
-            out_features=self.params.LATENT_DIM
+            in_features=params.latent_dim, 
+            out_features=params.latent_dim
         )
         
         self.z_logvar = nn.Linear(
-            in_features=self.params.LATENT_DIM, 
-            out_features=self.params.LATENT_DIM
+            in_features=params.latent_dim, 
+            out_features=params.latent_dim
         )
 
     def forward(self, x):
-        '''
-        (Batch Size, Sequence Length, Alphabet Length)
-         | gru
-        (1, Batch Size, Hidden Size)
-         | squeeze
-        (Batch Size, Hidden Size)
-         | dense sequential
-        (Batch Size, Latent Size)
-         | z_mean                   | z_logvar
-        (Batch Size, Latent Size)  (Batch Size, Latent Size)
-        '''
         
-        # GRU and Linear Dense Layers
+        # RNN and Linear Layers
         
-        _, hidden = self.gru(x)
-        
-        hidden = self.fc_network(hidden.squeeze(0))
+        _, hidden = self.rnn(x)
+        hidden = self.dense(hidden.squeeze(0))
         
         # Latent Distribution
         
-        z_mean = self.z_mean(hidden)
-        
-        z_logvar = self.z_logvar(hidden)
+        mean = self.z_mean(hidden)
+        logvar = self.z_logvar(hidden)
         
         # Latent Sample
         
-        epsilon = torch.randn_like(input=z_logvar, device=z_logvar.device)
+        epsilon = torch.randn_like(input=logvar, device=logvar.device)
+        z = mean + torch.exp(0.5 * logvar) * epsilon
         
-        z = z_mean + torch.exp(0.5 * z_logvar) * epsilon
-        
-        return z_mean, z_logvar, z
+        return mean, logvar, z

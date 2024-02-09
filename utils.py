@@ -1,69 +1,116 @@
 import numpy as np
 import pandas as pd
 import torch
+
 import os
 import json
 from collections import namedtuple
 import random
-from embedding_utils import *
 
-def fetch_smiles_zinc(zinc_dir: str):
-    smiles = []
+# =============
+# Preprocessing
+# =============
 
-    for root, dirs, files in os.walk(zinc_dir):
-        for file in files:
-            if not file.endswith('.smi'):
-                continue
-            path = os.path.join(root, file)
-            smiles.append(pd.read_table(path, sep=' '))
-
-    smiles = pd.concat(smiles)
+def make_dataspec(DATADIR):
+    '''
+    Make alphabet, stoi tables from data files
+    Stores in a json info file
+    '''
     
-    return smiles
-
-def fetch_smiles_gdb13(datadir: str):
-
-    train = pd.read_table(os.path.join(datadir, 'train_gdb13.smi'), header=None)[0]
-    test = pd.read_table(os.path.join(datadir, 'test_gdb13.smi'), header=None)[0]
+    train = list(pd.read_csv(os.path.join(DATADIR, 'train.smi'))['smiles'])
+    test = list(pd.read_csv(os.path.join(DATADIR, 'test.smi'))['smiles'])
+    total = train + test
     
-    return list(train), list(test)
-
-Params = namedtuple(
-    'Params', 
-    ['N', 'SMILE_LEN', 'alphabet', 'ALPHABET_LEN', 'stoi', 'itos', 'GRU_HIDDEN_DIM', 'LATENT_DIM']
-)
-
-def make_params(smiles=None, GRU_HIDDEN_DIM=128, LATENT_DIM=128, from_file=None, to_file=None):
-    if smiles is None and not from_file:
-        raise ValueError(
-            'make_params: cannot create parameters, need smiles or from_file'
-        )
-    
-    if from_file:
-        with open(from_file) as f:
-            return Params(**json.load(f))
+    smile_len = 2 + max(len(smile) for smile in total)
     
     alphabet = set()
-    for smile in smiles: alphabet.update(smile)
+    for smile in total: 
+        alphabet.update(smile)
     alphabet = sorted(list(alphabet))
     alphabet = ['<BOS>'] + alphabet + ['<EOS>']
     
-    params = Params(
-        N = len(smiles), 
-        SMILE_LEN = max(len(smile) for smile in smiles) + 2, 
-        alphabet = alphabet, 
-        ALPHABET_LEN = len(alphabet), 
-        stoi = {c: int(i) for i, c in enumerate(alphabet)}, 
-        itos = alphabet, 
-        GRU_HIDDEN_DIM = GRU_HIDDEN_DIM, 
-        LATENT_DIM = LATENT_DIM
+    stoi = {c: int(i) for i, c in enumerate(alphabet)}
+    
+    with open(os.path.join(DATADIR, 'spec.json'), 'w') as f:
+        f.write(json.dumps({
+            'n': len(total), 
+            'n_train': len(train), 
+            'n_test': len(test), 
+            'smile_len': smile_len, 
+            'alphabet': alphabet, 
+            'stoi': stoi
+        }, indent=4))
+
+def fetch_params(FNAME):
+    '''
+    Make a params object from json file
+    '''
+    with open(FNAME) as f:
+        params_dict = json.load(f)
+    
+    Params = namedtuple(
+        'Params', 
+        params_dict.keys()
     )
     
-    if to_file:
-        with open(to_file, 'w') as f:
-            f.write(json.dumps(params._asdict()))
+    return Params(**params_dict)
+
+def make_params(FNAME=None, **kwargs):
+    '''
+    Make a json file or params object from params
+    '''
+    if FNAME:
+        with open(FNAME, 'w') as f:
+            f.write(json.dumps(kwargs, indent=4))
+            
+    Params = namedtuple(
+        'Params', 
+        kwargs.keys()
+    )
     
-    return params
+    return Params(**kwargs)
+
+# =========
+# Embedding
+# =========
+
+def to_hot(smiles: list[str], stoi, smile_len):
+    
+    if type(smiles) == str: smiles = [smiles]
+    
+    one_hots = torch.zeros(
+        size=(len(smiles), smile_len, len(stoi)), 
+        dtype=torch.float32
+    )
+
+    for i, smile in enumerate(smiles):
+        
+        one_hots[i, 0, stoi['<BOS>']] = 1
+        
+        for j, char in enumerate(smile, start=1):
+            one_hots[i, j, stoi[char]] = 1
+        
+        one_hots[i, (len(smile) + 1):, stoi['<EOS>']] = 1
+    
+    return one_hots
+
+def from_hot(one_hot_smiles, alphabet, show_padding=False):
+    smiles = []
+    
+    for one_hot_smile in one_hot_smiles:
+        smile = ""
+        for one_hot in one_hot_smile:
+            c = alphabet[int(torch.argmax(one_hot))]
+            if c == '<BOS>': smile += '<' if show_padding else ''
+            elif c == '<EOS>': smile += '>' if show_padding else ''
+            else: smile += c
+        smiles.append(smile)
+    
+    return smiles
+
+# ==============
+# Evaluate Model
+# ==============
 
 def token_accuracy(x, x_hat):
     x = torch.argmax(x, dim=2)

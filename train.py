@@ -7,26 +7,48 @@ import time
 import os
 import random
 import math
+import sys
 
 from utils import *
-from embedding_utils import *
+from dataset import *
 from encoder import Encoder
 from decoder import Decoder
+from predictor import Predictor
 
-# ===================
-# TRAINING PARAMETERS
-# ===================
+# ==========
+# FILE PATHS
+# ==========
 
+DATADIR = './data/gdb13/'
+OUTDIR = sys.argv[1]
+
+DATASPEC_FILE = os.path.join(DATADIR, 'spec.json')
+MODELSPEC_FILE = os.path.join(OUTDIR, 'modelspec.json')
+
+ENCODER_WEIGHTS_FILE = os.path.join(OUTDIR, 'encoder_weights.pth')
+DECODER_WEIGHTS_FILE = os.path.join(OUTDIR, 'decoder_weights.pth')
+PREDICTOR_WEIGHTS_FILE = os.path.join(OUTDIR, 'predictor_weights.pth')
+LOG_FILE = os.path.join(OUTDIR, 'log.csv')
+
+# ================
+# TRAIN PARAMETERS
+# ================
+
+EPOCHS = 64
 BATCH_SIZE = 32
 LR = 0.0001
-EPOCHS = 20
-KL_WEIGHT = 1
-KL_ANNEAL = None
 
-NEW_RUN = False
-DATADIR = './data/gdb13/'
-OUTDIR = './run-6/'
-LOGFILE = os.path.join(OUTDIR, 'log.csv')
+KL_WEIGHT = 0.75
+KL_ANNEAL = 0.75
+KL_ANNEAL_RATE = 0.2
+
+PRED_WEIGHT = 0.3
+PRED_ANNEAL = 0.75
+PRED_ANNEAL_RATE = 0.2
+
+modelspec = make_params(hidden_dim=512, latent_dim=256, pred_dim=64, dropout=0.15)
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 CE_LOSS = nn.CrossEntropyLoss()
 KL_DIV = lambda mean, logvar : -0.5 * torch.mean(1 + logvar - mean ** 2 - torch.exp(logvar))
@@ -34,31 +56,34 @@ LOGISTIC = lambda x: 1/(1 + math.exp(-x))
 
 if __name__ == "__main__":
     
-    # ==========
-    # DATALOADER
-    # ==========
+    if not os.path.isdir(OUTDIR): os.mkdir(OUTDIR)
+
+    # =========
+    # LOAD DATA
+    # =========
     
-    smiles_train, smiles_test = fetch_smiles_gdb13(DATADIR)
-    
-    params = make_params(smiles=smiles_train + smiles_test, GRU_HIDDEN_DIM=512, LATENT_DIM=256)
-    
-    smiles_tensor = to_one_hot(smiles_train, params)
-    
-    train_dataloader = DataLoader(smiles_tensor, batch_size=BATCH_SIZE, shuffle=True)
-    
+    dataspec = fetch_params(DATASPEC_FILE)
+
+    trainset, testset = make_data(DATADIR)
+
+    dataloader = DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True)
+
     # =================
     # MODEL & OPTIMIZER
     # =================
     
-    encoder = Encoder(params)
-    decoder = Decoder(params)
-
-    if not NEW_RUN:
-        encoder.load_state_dict(torch.load(OUTDIR + 'encoder_weights.pth'))
-        decoder.load_state_dict(torch.load(OUTDIR + 'decoder_weights.pth'))
+    encoder = Encoder(modelspec, dataspec)
+    decoder = Decoder(modelspec, dataspec)
+    predictor = Predictor(modelspec)
+    
+    if os.path.isfile(ENCODER_WEIGHTS_FILE) and os.path.isfile(DECODER_WEIGHTS_FILE) and os.path.isfile(PREDICTOR_WEIGHTS_FILE):
+        encoder.load_state_dict(torch.load(ENCODER_WEIGHTS_FILE))
+        decoder.load_state_dict(torch.load(DECODER_WEIGHTS_FILE))
+        predictor.load_state_dict(torch.load(PREDICTOR_WEIGHTS_FILE))
 
     encoder_optimizer = optim.Adam(encoder.parameters(), lr=LR)
     decoder_optimizer = optim.Adam(decoder.parameters(), lr=LR)
+    predictor_optimizer = optim.Adam(predictor.parameters(), lr=LR)
 
     # =============
     # TRAINING LOOP
@@ -68,12 +93,11 @@ if __name__ == "__main__":
     
     start_time = time.time()
 
-    if NEW_RUN or not os.path.isfile(LOGFILE):
-        with open(LOGFILE, "w") as f:
-            f.write("i,time,loss,ce,kl,accuracy,prec\n")
+    if not os.path.isfile(LOG_FILE):
+        with open(LOG_FILE, "w") as f:
+            f.write("i,time,loss,ce,kl,logp,qed,sas,accuracy,prec\n")
     else:
-        # https://stackoverflow.com/questions/46258499/how-to-read-the-last-line-of-a-file-in-python
-        with open(LOGFILE, 'rb') as f:
+        with open(LOG_FILE, 'rb') as f:
             try:
                 f.seek(-2, os.SEEK_END)
                 while f.read(1) != b'\n':
@@ -87,34 +111,43 @@ if __name__ == "__main__":
 
     for epoch in range(EPOCHS):
 
-        kl_weight = KL_WEIGHT * LOGISTIC(epoch - EPOCHS * KL_ANNEAL) if KL_ANNEAL else 1
+        kl_weight = KL_WEIGHT * LOGISTIC(KL_ANNEAL_RATE * (epoch - EPOCHS * KL_ANNEAL)) if KL_ANNEAL else 1
+        pred_weight = PRED_WEIGHT * LOGISTIC(KL_ANNEAL_RATE * (epoch - EPOCHS * PRED_ANNEAL)) if PRED_ANNEAL else 1
 
-        for x in train_dataloader:
-            
+        for x, logp, qed, sas in dataloader:
+            x.to(device)
+
             encoder.train()
             decoder.train()
+            predictor.train()
 
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
+            predictor_optimizer.zero_grad()
             
             # ============
             # FORWARD PASS
             # ============
 
             mean, logvar, z = encoder(x)
+            logp_hat, qed_hat, sas_hat = predictor(mean)
             x_hat = decoder(z)
 
             x_hat = x_hat.transpose(1, 2)
             x_labels = torch.argmax(x, dim=2)
             
-            # ============
-            # Compute Loss
-            # ============
+            # ==============
+            # Compute Losses
+            # ==============
 
             ce = CE_LOSS(x_hat, x_labels)
             kl = KL_DIV(mean, logvar)
             
-            loss = ce + kl * kl_weight
+            logp_err = torch.mean((logp_hat - logp) ** 2)
+            qed_err = torch.mean((qed_hat - qed) ** 2)
+            sas_err = torch.mean((sas_hat - sas) ** 2)
+            
+            loss = ce + kl * kl_weight + (logp_err + qed_err + sas_err) * pred_weight
             
             # ====================
             # BACKWARD PROPAGATION
@@ -124,6 +157,7 @@ if __name__ == "__main__":
 
             encoder_optimizer.step()
             decoder_optimizer.step()
+            predictor_optimizer.step()
             
             # ===========
             # Log Metrics
@@ -132,28 +166,31 @@ if __name__ == "__main__":
             if (i % 100) == 0:
                 encoder.eval()
                 decoder.eval()
+                predictor.eval()
                 
                 # ======================
                 # Test Sample Evaluation
                 # ======================
 
                 with torch.no_grad():
-                    x = to_one_hot(random.sample(smiles_test, 100), params)
-                    _, _, z = encoder(x)
-                    x_hat = decoder(z)
+                    x = testset.hots[torch.randint(0, dataspec.n_test, (64,))]
+                    mean, _, _ = encoder(x)
+                    x_hat = decoder(mean)
 
                 acc = token_accuracy(x, x_hat)
-                
                 prec = percent_reconstructed(x, x_hat)
                 
                 # ============
                 # Write to Log
                 # ============
-
-                with open(LOGFILE, "a") as f:
+                
+                with open(LOG_FILE, "a") as f:
                     t = time.time() - start_time
                     f.write(
-                        f'{i},{t},{float(loss)},{float(ce)},{float(kl)},{acc},{prec}\n'
+                        f'{i},{t},\
+                        {float(loss)},{float(ce)},{float(kl)},\
+                        {float(logp_err)},{float(qed_err)},{float(sas_err)},\
+                        {acc},{prec}\n'
                     )
             
             # ==========
@@ -161,7 +198,8 @@ if __name__ == "__main__":
             # ==========
 
             if (i % 200) == 0:
-                torch.save(encoder.state_dict(), OUTDIR + 'encoder_weights.pth')
-                torch.save(decoder.state_dict(), OUTDIR + 'decoder_weights.pth')
+                torch.save(encoder.state_dict(), ENCODER_WEIGHTS_FILE)
+                torch.save(decoder.state_dict(), DECODER_WEIGHTS_FILE)
+                torch.save(predictor.state_dict(), PREDICTOR_WEIGHTS_FILE)
 
             i += 1
