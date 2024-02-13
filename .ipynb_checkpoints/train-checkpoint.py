@@ -34,16 +34,16 @@ LOG_FILE = os.path.join(OUTDIR, 'log.csv')
 # TRAIN PARAMETERS
 # ================
 
-EPOCHS = 64
+EPOCHS = 32
 BATCH_SIZE = 32
-LR = 0.0001
+LR = 0.00001
 
 KL_WEIGHT = 0.75
-KL_ANNEAL = 0.75
+KL_ANNEAL = -0.25
 KL_ANNEAL_RATE = 0.2
 
 PRED_WEIGHT = 0.3
-PRED_ANNEAL = 0.75
+PRED_ANNEAL = -0.25
 PRED_ANNEAL_RATE = 0.2
 
 modelspec = make_params(hidden_dim=512, latent_dim=256, pred_dim=64, dropout=0.15)
@@ -111,8 +111,8 @@ if __name__ == "__main__":
 
     for epoch in range(EPOCHS):
 
-        kl_weight = KL_WEIGHT * LOGISTIC(KL_ANNEAL_RATE * (epoch - EPOCHS * KL_ANNEAL)) if KL_ANNEAL else 1
-        pred_weight = PRED_WEIGHT * LOGISTIC(KL_ANNEAL_RATE * (epoch - EPOCHS * PRED_ANNEAL)) if PRED_ANNEAL else 1
+        kl_weight = KL_WEIGHT #* LOGISTIC(KL_ANNEAL_RATE * (epoch - EPOCHS * KL_ANNEAL)) #if KL_ANNEAL else 1
+        pred_weight = PRED_WEIGHT #* LOGISTIC(KL_ANNEAL_RATE * (epoch - EPOCHS * PRED_ANNEAL)) #if PRED_ANNEAL else 1
 
         for x, logp, qed, sas in dataloader:
             x.to(device)
@@ -130,7 +130,7 @@ if __name__ == "__main__":
             # ============
 
             mean, logvar, z = encoder(x)
-            logp_hat, qed_hat, sas_hat = predictor(mean)
+            logp_hat, qed_hat, sas_hat = predictor(z)
             x_hat = decoder(z)
 
             x_hat = x_hat.transpose(1, 2)
