@@ -1,12 +1,13 @@
 import torch
 from torch.utils.data import Dataset
 
+import random
 import os
 import pandas as pd
 
 from utils import fetch_params, to_hot
 
-def make_data(DATADIR, n=None):
+def make_data(DATADIR, device='cpu', n=None):
     
     dataspec = fetch_params(os.path.join(DATADIR, 'spec.json'))
     
@@ -17,8 +18,8 @@ def make_data(DATADIR, n=None):
     testdf = pd.read_csv(test_file)
     
     if n:
-        traindf = traindf.iloc[:n]
-        testdf = testdf.iloc[:n]
+        traindf = traindf.sample(n)
+        testdf = testdf.sample(n)
 
     # Make Train Tensors
     
@@ -44,20 +45,25 @@ def make_data(DATADIR, n=None):
     
     # Make Datasets
     
-    trainset = SmileDataset(train_hots, *train_props)
-    testset = SmileDataset(test_hots, *test_props)
+    trainset = SmileDataset(train_hots, *train_props, device)
+    testset = SmileDataset(test_hots, *test_props, device)
     
     return trainset, testset
 
 class SmileDataset(Dataset):
-    def __init__(self, hots, logp, qed, sas):
+    def __init__(self, hots, logp, qed, sas, device):
         self.hots = hots
         self.logp = logp
         self.qed = qed
         self.sas = sas
+        self.device = device
 
     def __len__(self):
         return self.hots.size(0)
     
+    def sample(self, n):
+        return self.hots[random.sample(range(len(self.hots)), n)].to(self.device)
+    
     def __getitem__(self, idx):
-        return self.hots[idx], self.logp[idx], self.qed[idx], self.sas[idx]
+        device = self.device
+        return self.hots[idx].to(device), self.logp[idx].to(device), self.qed[idx].to(device), self.sas[idx].to(device)

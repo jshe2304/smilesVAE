@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import torch
+import matplotlib.pyplot as plt
 
 import os
 import json
@@ -149,3 +150,47 @@ def evaluate_ae(encoder, decoder, smiles, eval_n, params):
     pred_smiles = from_one_hot(torch.softmax(x_hat, dim=2), params)
     
     return pd.DataFrame({'target': smiles, 'predicted': pred_smiles})
+
+# ===============
+# Latent Analysis
+# ===============
+
+def get_latent_distributions(encoder, hots, n=1000, plot=False):
+    latents, _, _ = encoder(hots)
+    
+    means = torch.mean(latents, dim=0)
+    stds = torch.std(latents, dim=0)
+    
+    if plot:
+        fig, ax = plt.subplots()
+        ax.bar(range(latents.size(1)), stds.detach())
+        ax.set_xlabel('dimension number')
+        ax.set_ylabel('standard deviation')
+        ax.set_title(f'standard deviation of latent space dimensions ({n} samples)')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        plt.show()
+
+    return means, stds
+
+# ============
+# Optimization
+# ============
+
+def decompress(compressed_x, uncompressed_dims, n):
+    if compressed_x.size(-1) >= n: return compressed_x
+    
+    if compressed_x.dim() > 1:
+        x = torch.zeros(compressed_x.size(0), n, dtype=compressed_x.dtype)
+        
+        for i, dim in enumerate(uncompressed_dims):
+            x[:, dim] = compressed_x[:, i]
+    else:
+        x = torch.zeros(n, dtype=compressed_x.dtype)
+        
+        for i, dim in enumerate(uncompressed_dims):
+            x[dim] = compressed_x[i]
+
+    return x

@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 
+H = 256 # hidden dimension
+N = 2 # number of layers
+
 class Encoder(nn.Module):
     '''
     Compress token sequence into vector. Choice of CNN or RNN. 
@@ -8,50 +11,53 @@ class Encoder(nn.Module):
     Token Sequence  -->  GRU/CNN  --> Dense  --> Variational Sampler  -->  Latent Vector
     '''
     
-    def __init__(self, params, data, *args):
+    def __init__(self, L, data):
         super().__init__()
         
         # Workhorse RNN/CNN
-
+        
         self.rnn = nn.GRU(
             input_size=len(data.alphabet), 
-            hidden_size=params.hidden_dim, 
+            hidden_size=H, 
             batch_first=True, 
+            num_layers=N, 
+            dropout=0.1
         )
-            
-        # Dense Layers
         
         self.dense = nn.Sequential(
+
             nn.Linear(
-                in_features=params.hidden_dim, 
-                out_features=params.latent_dim, 
+                in_features = N * H, 
+                out_features = N * H
             ), 
             nn.ReLU(), 
             nn.Linear(
-                in_features=params.latent_dim, 
-                out_features=params.latent_dim
+                in_features = N * H, 
+                out_features = L
             )
         )
         
         # Distribution-Defining Dense Layers
         
         self.z_mean = nn.Linear(
-            in_features=params.latent_dim, 
-            out_features=params.latent_dim
+            in_features = L, 
+            out_features = L
         )
         
         self.z_logvar = nn.Linear(
-            in_features=params.latent_dim, 
-            out_features=params.latent_dim
+            in_features = L, 
+            out_features = L
         )
-
+        
     def forward(self, x):
         
         # RNN and Linear Layers
         
         _, hidden = self.rnn(x)
-        hidden = self.dense(hidden.squeeze(0))
+        hidden = hidden.transpose(0, 1).flatten(start_dim=1)
         
+        hidden = self.dense(hidden)
+
         # Latent Distribution
         
         mean = self.z_mean(hidden)
@@ -59,7 +65,7 @@ class Encoder(nn.Module):
         
         # Latent Sample
         
-        epsilon = torch.randn_like(input=logvar, device=logvar.device)
+        epsilon = torch.randn_like(input=logvar)
         z = mean + torch.exp(0.5 * logvar) * epsilon
         
         return mean, logvar, z

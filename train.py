@@ -34,21 +34,19 @@ LOG_FILE = os.path.join(OUTDIR, 'log.csv')
 # TRAIN PARAMETERS
 # ================
 
-EPOCHS = 32
+EPOCHS = 64
 BATCH_SIZE = 32
 LR = 0.00001
 
-KL_WEIGHT = 0.75
-KL_ANNEAL = -0.25
+KL_WEIGHT = 0.25
+KL_ANNEAL = None
 KL_ANNEAL_RATE = 0.2
 
-PRED_WEIGHT = 0.3
-PRED_ANNEAL = -0.25
+PRED_WEIGHT = 0.25
+PRED_ANNEAL = None
 PRED_ANNEAL_RATE = 0.2
 
-modelspec = make_params(hidden_dim=512, latent_dim=256, pred_dim=64, dropout=0.15)
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 CE_LOSS = nn.CrossEntropyLoss()
 KL_DIV = lambda mean, logvar : -0.5 * torch.mean(1 + logvar - mean ** 2 - torch.exp(logvar))
@@ -64,7 +62,7 @@ if __name__ == "__main__":
     
     dataspec = fetch_params(DATASPEC_FILE)
 
-    trainset, testset = make_data(DATADIR)
+    trainset, testset = make_data(DATADIR, device)
 
     dataloader = DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True)
 
@@ -72,14 +70,20 @@ if __name__ == "__main__":
     # MODEL & OPTIMIZER
     # =================
     
-    encoder = Encoder(modelspec, dataspec)
-    decoder = Decoder(modelspec, dataspec)
-    predictor = Predictor(modelspec)
+    L = 128 # Latent Space Dimension
+    
+    encoder = Encoder(L, dataspec)
+    decoder = Decoder(L, dataspec)
+    predictor = Predictor(L)
     
     if os.path.isfile(ENCODER_WEIGHTS_FILE) and os.path.isfile(DECODER_WEIGHTS_FILE) and os.path.isfile(PREDICTOR_WEIGHTS_FILE):
         encoder.load_state_dict(torch.load(ENCODER_WEIGHTS_FILE))
         decoder.load_state_dict(torch.load(DECODER_WEIGHTS_FILE))
         predictor.load_state_dict(torch.load(PREDICTOR_WEIGHTS_FILE))
+        
+    encoder.to(device)
+    decoder.to(device)
+    predictor.to(device)
 
     encoder_optimizer = optim.Adam(encoder.parameters(), lr=LR)
     decoder_optimizer = optim.Adam(decoder.parameters(), lr=LR)
@@ -90,12 +94,10 @@ if __name__ == "__main__":
     # =============
     
     i = 0
-    
-    start_time = time.time()
 
     if not os.path.isfile(LOG_FILE):
         with open(LOG_FILE, "w") as f:
-            f.write("i,time,loss,ce,kl,logp,qed,sas,accuracy,prec\n")
+            f.write("i,loss,ce,kl,logp,qed,sas,accuracy,prec\n")
     else:
         with open(LOG_FILE, 'rb') as f:
             try:
@@ -108,14 +110,15 @@ if __name__ == "__main__":
                 start_time = float(last_line[1])
             except OSError:
                 pass
+            
+    latent_dropout = nn.Dropout(p=0.2)
 
     for epoch in range(EPOCHS):
 
-        kl_weight = KL_WEIGHT #* LOGISTIC(KL_ANNEAL_RATE * (epoch - EPOCHS * KL_ANNEAL)) #if KL_ANNEAL else 1
-        pred_weight = PRED_WEIGHT #* LOGISTIC(KL_ANNEAL_RATE * (epoch - EPOCHS * PRED_ANNEAL)) #if PRED_ANNEAL else 1
+        kl_weight = KL_WEIGHT * (LOGISTIC(KL_ANNEAL_RATE * (epoch - EPOCHS * KL_ANNEAL)) if KL_ANNEAL else 1)
+        pred_weight = PRED_WEIGHT * (LOGISTIC(KL_ANNEAL_RATE * (epoch - EPOCHS * PRED_ANNEAL)) if PRED_ANNEAL else 1)
 
         for x, logp, qed, sas in dataloader:
-            x.to(device)
 
             encoder.train()
             decoder.train()
@@ -130,8 +133,8 @@ if __name__ == "__main__":
             # ============
 
             mean, logvar, z = encoder(x)
-            logp_hat, qed_hat, sas_hat = predictor(z)
             x_hat = decoder(z)
+            logp_hat, qed_hat, sas_hat = predictor(z)
 
             x_hat = x_hat.transpose(1, 2)
             x_labels = torch.argmax(x, dim=2)
@@ -163,7 +166,7 @@ if __name__ == "__main__":
             # Log Metrics
             # ===========
 
-            if (i % 100) == 0:
+            if (i % 512) == 0:
                 encoder.eval()
                 decoder.eval()
                 predictor.eval()
@@ -173,7 +176,7 @@ if __name__ == "__main__":
                 # ======================
 
                 with torch.no_grad():
-                    x = testset.hots[torch.randint(0, dataspec.n_test, (64,))]
+                    x = testset.sample(64)
                     mean, _, _ = encoder(x)
                     x_hat = decoder(mean)
 
@@ -185,19 +188,15 @@ if __name__ == "__main__":
                 # ============
                 
                 with open(LOG_FILE, "a") as f:
-                    t = time.time() - start_time
                     f.write(
-                        f'{i},{t},\
-                        {float(loss)},{float(ce)},{float(kl)},\
-                        {float(logp_err)},{float(qed_err)},{float(sas_err)},\
-                        {acc},{prec}\n'
+                        f'{i},{float(loss)},{float(ce)},{float(kl)},{float(logp_err)},{float(qed_err)},{float(sas_err)},{acc},{prec}\n'
                     )
             
             # ==========
             # Save Model
             # ==========
 
-            if (i % 200) == 0:
+            if (i % 1024) == 0:
                 torch.save(encoder.state_dict(), ENCODER_WEIGHTS_FILE)
                 torch.save(decoder.state_dict(), DECODER_WEIGHTS_FILE)
                 torch.save(predictor.state_dict(), PREDICTOR_WEIGHTS_FILE)
