@@ -3,17 +3,17 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-import time
+import json
 import os
 import random
 import math
 import sys
 
-from utils import *
-from dataset import *
-from encoder import Encoder
-from decoder import Decoder
-from predictor import Predictor
+from utils.utils import *
+from utils.dataset import *
+from rnn_vae.encoder import Encoder
+from rnn_vae.decoder import Decoder
+from rnn_vae.predictor import Predictor
 
 # ==========
 # FILE PATHS
@@ -21,30 +21,31 @@ from predictor import Predictor
 
 DATADIR = './data/gdb13/'
 OUTDIR = sys.argv[1]
+assert os.path.isdir(OUTDIR)
 
 DATASPEC_FILE = os.path.join(DATADIR, 'spec.json')
-MODELSPEC_FILE = os.path.join(OUTDIR, 'modelspec.json')
+LOG_FILE = os.path.join(OUTDIR, 'log.csv')
+RUNSPEC_FILE = os.path.join(OUTDIR, 'runspec.json')
 
 ENCODER_WEIGHTS_FILE = os.path.join(OUTDIR, 'encoder_weights.pth')
 DECODER_WEIGHTS_FILE = os.path.join(OUTDIR, 'decoder_weights.pth')
 PREDICTOR_WEIGHTS_FILE = os.path.join(OUTDIR, 'predictor_weights.pth')
-LOG_FILE = os.path.join(OUTDIR, 'log.csv')
 
 # ================
 # TRAIN PARAMETERS
 # ================
 
-EPOCHS = 64
-BATCH_SIZE = 32
-LR = 0.00001
-
-KL_WEIGHT = 0.25
-KL_ANNEAL = None
-KL_ANNEAL_RATE = 0.2
-
-PRED_WEIGHT = 0.25
-PRED_ANNEAL = None
-PRED_ANNEAL_RATE = 0.2
+with open(RUNSPEC_FILE) as f:
+    (L, 
+    EPOCHS, BATCH_SIZE, LR, 
+    KL_WEIGHT, KL_ANNEAL_AT, KL_ANNEAL_RATE, 
+    PRED_WEIGHT, PRED_ANNEAL_AT, PRED_ANNEAL_RATE) = json.load(f).values()
+    
+print(f'{L}-dimension VAE')
+print(f'{EPOCHS} epochs of {BATCH_SIZE} samples')
+print(f'Learning at a rate of {LR}')
+print(f'Annealing in KL at {KL_ANNEAL_AT} epochs at a rate of {KL_ANNEAL_RATE} with strength {KL_WEIGHT}')
+print(f'Annealing in KL at {PRED_ANNEAL_AT} epochs at a rate of {PRED_ANNEAL_RATE} with strength {PRED_WEIGHT}')
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -53,8 +54,6 @@ KL_DIV = lambda mean, logvar : -0.5 * torch.mean(1 + logvar - mean ** 2 - torch.
 LOGISTIC = lambda x: 1/(1 + math.exp(-x))
 
 if __name__ == "__main__":
-    
-    if not os.path.isdir(OUTDIR): os.mkdir(OUTDIR)
 
     # =========
     # LOAD DATA
@@ -70,17 +69,15 @@ if __name__ == "__main__":
     # MODEL & OPTIMIZER
     # =================
     
-    L = 128 # Latent Space Dimension
-    
-    encoder = Encoder(L, dataspec)
-    decoder = Decoder(L, dataspec)
+    encoder = Encoder(L)
+    decoder = Decoder(L)
     predictor = Predictor(L)
     
     if os.path.isfile(ENCODER_WEIGHTS_FILE) and os.path.isfile(DECODER_WEIGHTS_FILE) and os.path.isfile(PREDICTOR_WEIGHTS_FILE):
         encoder.load_state_dict(torch.load(ENCODER_WEIGHTS_FILE))
         decoder.load_state_dict(torch.load(DECODER_WEIGHTS_FILE))
         predictor.load_state_dict(torch.load(PREDICTOR_WEIGHTS_FILE))
-        
+    
     encoder.to(device)
     decoder.to(device)
     predictor.to(device)
@@ -92,31 +89,21 @@ if __name__ == "__main__":
     # =============
     # TRAINING LOOP
     # =============
-    
-    i = 0
 
     if not os.path.isfile(LOG_FILE):
         with open(LOG_FILE, "w") as f:
-            f.write("i,loss,ce,kl,logp,qed,sas,accuracy,prec\n")
+            f.write("loss,ce,kl,logp,qed,sas,accuracy,prec\n")
+            EPOCHS_COMPLETED = 0
     else:
-        with open(LOG_FILE, 'rb') as f:
-            try:
-                f.seek(-2, os.SEEK_END)
-                while f.read(1) != b'\n':
-                    f.seek(-2, os.SEEK_CUR)
-                
-                last_line = f.readline().decode().split(',')
-                i = int(last_line[0])
-                start_time = float(last_line[1])
-            except OSError:
-                pass
-            
-    latent_dropout = nn.Dropout(p=0.2)
-
-    for epoch in range(EPOCHS):
-
-        kl_weight = KL_WEIGHT * (LOGISTIC(KL_ANNEAL_RATE * (epoch - EPOCHS * KL_ANNEAL)) if KL_ANNEAL else 1)
-        pred_weight = PRED_WEIGHT * (LOGISTIC(KL_ANNEAL_RATE * (epoch - EPOCHS * PRED_ANNEAL)) if PRED_ANNEAL else 1)
+        with open(LOG_FILE) as f:
+            EPOCHS_COMPLETED = sum(1 for _ in f) - 1
+    
+    for epoch in range(EPOCHS_COMPLETED + 1, EPOCHS_COMPLETED + EPOCHS + 1):
+        
+        kl_weight = KL_WEIGHT * LOGISTIC(  KL_ANNEAL_RATE * (epoch - KL_ANNEAL_AT)  )
+        pred_weight = PRED_WEIGHT * LOGISTIC(  PRED_ANNEAL_RATE * (epoch - PRED_ANNEAL_AT)  )
+        
+        #print(f'Epoch {epoch}: KL ({kl_weight})\tPred({pred_weight})')
 
         for x, logp, qed, sas in dataloader:
 
@@ -133,7 +120,7 @@ if __name__ == "__main__":
             # ============
 
             mean, logvar, z = encoder(x)
-            x_hat = decoder(z)
+            x_hat = decoder(z, target=x)
             logp_hat, qed_hat, sas_hat = predictor(z)
 
             x_hat = x_hat.transpose(1, 2)
@@ -162,43 +149,35 @@ if __name__ == "__main__":
             decoder_optimizer.step()
             predictor_optimizer.step()
             
-            # ===========
-            # Log Metrics
-            # ===========
+        # ===========
+        # Log Metrics
+        # ===========
 
-            if (i % 512) == 0:
-                encoder.eval()
-                decoder.eval()
-                predictor.eval()
-                
-                # ======================
-                # Test Sample Evaluation
-                # ======================
+        encoder.eval()
+        decoder.eval()
+        predictor.eval()
 
-                with torch.no_grad():
-                    x = testset.sample(64)
-                    mean, _, _ = encoder(x)
-                    x_hat = decoder(mean)
+        # ======================
+        # Test Sample Evaluation
+        # ======================
 
-                acc = token_accuracy(x, x_hat)
-                prec = percent_reconstructed(x, x_hat)
-                
-                # ============
-                # Write to Log
-                # ============
-                
-                with open(LOG_FILE, "a") as f:
-                    f.write(
-                        f'{i},{float(loss)},{float(ce)},{float(kl)},{float(logp_err)},{float(qed_err)},{float(sas_err)},{acc},{prec}\n'
-                    )
-            
-            # ==========
-            # Save Model
-            # ==========
+        with torch.no_grad():
+            x, _, _, _ = testset.sample(64)
+            mean, _, _ = encoder(x)
+            x_hat = decoder(mean)
 
-            if (i % 1024) == 0:
-                torch.save(encoder.state_dict(), ENCODER_WEIGHTS_FILE)
-                torch.save(decoder.state_dict(), DECODER_WEIGHTS_FILE)
-                torch.save(predictor.state_dict(), PREDICTOR_WEIGHTS_FILE)
+        acc = token_accuracy(x, x_hat)
+        prec = percent_reconstructed(x, x_hat)
 
-            i += 1
+        # ============
+        # Write to Log
+        # ============
+
+        with open(LOG_FILE, "a") as f:
+            f.write(
+                f'{float(loss)},{float(ce)},{float(kl)},{float(logp_err)},{float(qed_err)},{float(sas_err)},{acc},{prec}\n'
+            )
+
+        torch.save(encoder.state_dict(), ENCODER_WEIGHTS_FILE)
+        torch.save(decoder.state_dict(), DECODER_WEIGHTS_FILE)
+        torch.save(predictor.state_dict(), PREDICTOR_WEIGHTS_FILE)

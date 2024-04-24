@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=train_vae_jay
+#SBATCH --job-name=vae.16
 #SBATCH --output=job.out
 #SBATCH --error=job.err
 #SBATCH --account=pi-andrewferguson

@@ -4,3 +4,4 @@ venv/
 env/
 *.err
 *.out
+runs/run0*
