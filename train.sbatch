@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=vae.16
+#SBATCH --job-name=vae-mixed-64
 #SBATCH --output=job.out
 #SBATCH --error=job.err
 #SBATCH --account=pi-andrewferguson

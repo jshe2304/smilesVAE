@@ -1,0 +1,12 @@
+{
+    "L": 64, 
+    "EPOCHS": 128, 
+    "BATCH_SIZE": 32, 
+    "LR": 0.00001, 
+    "KL_WEIGHT": 0.1, 
+    "KL_ANNEAL_AT": 128, 
+    "KL_ANNEAL_RATE": 0.2, 
+    "PRED_WEIGHT": 0.1, 
+    "PRED_ANNEAL_AT": 128, 
+    "PRED_ANNEAL_RATE": 0.2
+}

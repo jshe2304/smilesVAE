@@ -5,4 +5,5 @@ env/
 *.err
 *.out
 runs/run0*
-runs/run12.*
+runs/run12*
+.ipynb_checkpoints

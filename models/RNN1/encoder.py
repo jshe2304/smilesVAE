@@ -35,7 +35,8 @@ class Encoder(nn.Module):
             nn.Linear(
                 in_features = H_flat, 
                 out_features = L
-            )
+            ), 
+            nn.Dropout(0.1)
         )
         
         # Distribution-Defining Dense Layers

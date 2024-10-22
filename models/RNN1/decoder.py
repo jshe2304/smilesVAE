@@ -24,11 +24,13 @@ class DecodeNext(nn.Module):
             out_features = H_i
         )
 
+        self.softmax = nn.Softmax(dim=2)
+
     def forward(self, inp, hidden):
 
         out, hidden = self.rnn(inp, hidden)
-        
-        prediction = self.dense(out.squeeze(1))
+
+        prediction = self.softmax(self.dense(out))
 
         return prediction, hidden
 
@@ -52,7 +54,7 @@ class Decoder(nn.Module):
                 out_features=H
             ), 
             nn.ReLU(), 
-            nn.Dropout(0.1), 
+            nn.Dropout(0.25), 
             nn.Linear(
                 in_features=H, 
                 out_features=H
@@ -76,23 +78,34 @@ class Decoder(nn.Module):
         )
 
         # Start Token
-        inp = torch.full(
-            fill_value=-32,
+        inp = torch.zeros(
             size=(batch_size, 1, self.alphabet_len), 
             dtype=torch.float32, 
             device=latent.device
         )
-        inp[:, :, 0] = 32
-        y[:, 0, :] = inp.squeeze().detach()
+        inp[:, :, 0] = 1
+        y[:, 0, :] = inp.squeeze(1).detach()
 
         # Iterative Token Prediction
         for i in range(1, self.smile_len):
             prediction, hidden = self.decode_next(inp, hidden)
-            y[:, i, :] = prediction
+
+            y[:, i, :] = prediction.squeeze(1)
             
+            inp = prediction
+
+            '''
             if target is not None:
                 inp = target[:, i, :].unsqueeze(1)
             else:
-                inp = prediction.unsqueeze(1).detach()
+                inp = torch.zeros(
+                    size=(batch_size, self.alphabet_len), 
+                    dtype=torch.float32, 
+                    device=latent.device
+                )
+                inp[:, prediction.argmax(dim=2)] = 1 # WTFWTFWTFWTF
+
+            #print(inp)
+            '''
 
         return y

@@ -4,6 +4,7 @@ import torch
 import matplotlib.pyplot as plt
 
 import os
+import re
 import json
 from collections import namedtuple
 import random
@@ -28,7 +29,7 @@ def make_dataspec(DATADIR):
     for smile in total: 
         alphabet.update(smile)
     alphabet = sorted(list(alphabet))
-    alphabet = ['<BOS>'] + alphabet + ['<EOS>']
+    alphabet = ['<'] + alphabet + ['>']
     
     stoi = {c: int(i) for i, c in enumerate(alphabet)}
     
@@ -75,40 +76,78 @@ def make_params(FNAME=None, **kwargs):
 # Embedding
 # =========
 
-def to_hot(smiles: list[str], stoi, smile_len):
+def make_hot_utils(dataspec):
     
-    if type(smiles) == str: smiles = [smiles]
-    
-    one_hots = torch.zeros(
-        size=(len(smiles), smile_len, len(stoi)), 
-        dtype=torch.float32
-    )
+    def to_hot(smiles: list[str]):
+        
+        if type(smiles) == str: smiles = [smiles]
+        
+        one_hots = torch.zeros(
+            size=(len(smiles), dataspec.smile_len, len(dataspec.alphabet)), 
+            dtype=torch.float32
+        )
 
-    for i, smile in enumerate(smiles):
+        for i, smile in enumerate(smiles):
+            
+            one_hots[i, 0, dataspec.stoi['<']] = 1
+            
+            for j, c in enumerate(smile, start=1):
+                one_hots[i, j, dataspec.stoi[c]] = 1
+            
+            one_hots[i, (len(smile) + 1):, dataspec.stoi['>']] = 1
         
-        one_hots[i, 0, stoi['<BOS>']] = 1
-        
-        for j, char in enumerate(smile, start=1):
-            one_hots[i, j, stoi[char]] = 1
-        
-        one_hots[i, (len(smile) + 1):, stoi['<EOS>']] = 1
+        return one_hots
     
-    return one_hots
+    def from_hot(one_hot_smiles, show_padding=False):
+        
+        smiles = []
+        
+        for one_hot_smile in one_hot_smiles:
+            smile = ""
+            for one_hot in one_hot_smile:
+                c = dataspec.alphabet[int(torch.argmax(one_hot))]
+                if c == '<': smile += '<' if show_padding else ''
+                elif c == '>': smile += '>' if show_padding else ''
+                elif c == 'L': smile += 'Cl'
+                else: smile += c
+            smiles.append(smile)
+        
+        return smiles
 
-def from_hot(one_hot_smiles, alphabet, show_padding=False):
-    smiles = []
+    return to_hot, from_hot
+
+def make_embed_utils(dataspec):
+    def to_indices(smiles: list[str]):
+        
+        if type(smiles) == str: smiles = [smiles]
+        
+        all_indices = torch.full(
+            fill_value=dataspec.stoi['>'], 
+            size=(len(smiles), dataspec.smile_len), 
+            dtype=torch.long
+        )
+
+        alphabet = re.compile('|'.join(map(re.escape, dataspec.alphabet)))
+
+        for i, smile in enumerate(smiles):
+            indices = [dataspec.stoi[c] for c in alphabet.findall(smile)]
+            all_indices[i, :len(indices)] = torch.Tensor(indices)
+        
+        return all_indices
     
-    for one_hot_smile in one_hot_smiles:
-        smile = ""
-        for one_hot in one_hot_smile:
-            c = alphabet[int(torch.argmax(one_hot))]
-            if c == '<BOS>': smile += '<' if show_padding else ''
-            elif c == '<EOS>': smile += '>' if show_padding else ''
-            elif c == 'L': smile += 'Cl'
-            else: smile += c
-        smiles.append(smile)
-    
-    return smiles
+    def from_distribution(dists):
+        
+        smiles = []
+        for dist in dists:
+            dist = dist.argmax(dim=-1)
+            smile = ''.join(
+                dataspec.alphabet[i] for i in dist if dataspec.alphabet[i] not in ('<', '>')
+            )
+            smiles.append(smile)
+        
+        return smiles
+
+    return to_indices, from_distribution
 
 # ==============
 # Evaluate Model
@@ -201,18 +240,22 @@ def get_important_dimensions(x, encoder, decoder=None, n=1000, use_loss=False):
 # Optimization
 # ============
 
-def decompress(compressed_x, uncompressed_dims, n, noised=False):
-    if compressed_x.size(-1) >= n: return compressed_x
+def decompress(compressed_z, dims, n, noised=False):
+    '''
+    Decompresses a compressed latent vector to n dimensions. 
+    Decompressed dimensions are set to zero. 
+    '''
+    assert compressed_z.dim() <= 2
+    assert compressed_z.size(-1) == len(dims)
+    assert compressed_z.size(-1) < n
     
-    if compressed_x.dim() > 1:
-        x = torch.zeros(compressed_x.size(0), n, dtype=compressed_x.dtype)
-        
-        for i, dim in enumerate(uncompressed_dims):
-            x[:, dim] = compressed_x[:, i]
-    else:
-        x = torch.zeros(n, dtype=compressed_x.dtype)
-        
-        for i, dim in enumerate(uncompressed_dims):
-            x[dim] = compressed_x[i]
+    if compressed_z.dim() == 1: compressed_z.unsqueeze(0)
 
-    return x
+    z = torch.zeros(compressed_z.size(0), n, dtype=compressed_z.dtype)
+    z[:, dims] = compressed_z
+
+    return z
+
+
+
+
